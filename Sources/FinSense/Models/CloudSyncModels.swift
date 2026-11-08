@@ -24,6 +24,14 @@ public enum SyncOperation: String, Codable {
     case delete = "DELETE"
 }
 
+public struct AnyKey: CodingKey {
+    public var stringValue: String
+    public var intValue: Int?
+    public init?(stringValue: String) { self.stringValue = stringValue; self.intValue = nil }
+    public init?(intValue: Int) { self.stringValue = "\(intValue)"; self.intValue = intValue }
+    public init(_ string: String) { self.stringValue = string; self.intValue = nil }
+}
+
 public struct LocalSyncMutation: Identifiable, Codable, Hashable {
     public var id: UUID
     public var entityName: String
@@ -51,21 +59,25 @@ public struct LocalSyncMutation: Identifiable, Codable, Hashable {
 
 public struct SyncPushPullRequest: Codable {
     public let clientId: String
+    public let sinceRevision: Int64
     public let clientLastSyncRevision: Int64
     public let mutations: [SyncMutationDTO]
 
     public init(
         clientId: String,
+        sinceRevision: Int64? = nil,
         clientLastSyncRevision: Int64,
         mutations: [SyncMutationDTO]
     ) {
         self.clientId = clientId
+        self.sinceRevision = sinceRevision ?? clientLastSyncRevision
         self.clientLastSyncRevision = clientLastSyncRevision
         self.mutations = mutations
     }
 
     enum CodingKeys: String, CodingKey {
         case clientId = "client_id"
+        case sinceRevision = "since_revision"
         case clientLastSyncRevision = "client_last_sync_revision"
         case mutations
     }
@@ -284,14 +296,56 @@ public struct SyncDeltasContainerDTO: Codable {
 
     enum CodingKeys: String, CodingKey {
         case bankAccounts = "bank_accounts"
+        case bankAccountsAlt = "bankAccounts"
         case categories
         case financialTransactions = "financial_transactions"
+        case financialTransactionsAlt = "financialTransactions"
         case investmentItems = "investment_items"
+        case investmentItemsAlt = "investmentItems"
         case creditContracts = "credit_contracts"
+        case creditContractsAlt = "creditContracts"
         case debtItems = "debt_items"
+        case debtItemsAlt = "debtItems"
         case categoryProvisions = "category_provisions"
+        case categoryProvisionsAlt = "categoryProvisions"
         case categoryQuotaRules = "category_quota_rules"
+        case categoryQuotaRulesAlt = "categoryQuotaRules"
         case chatMessages = "chat_messages"
+        case chatMessagesAlt = "chatMessages"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.bankAccounts = (try? container.decodeIfPresent([BankAccount].self, forKey: .bankAccounts))
+            ?? (try? container.decodeIfPresent([BankAccount].self, forKey: .bankAccountsAlt))
+        self.categories = try? container.decodeIfPresent([CategoryItem].self, forKey: .categories)
+        self.financialTransactions = (try? container.decodeIfPresent([FinancialTransaction].self, forKey: .financialTransactions))
+            ?? (try? container.decodeIfPresent([FinancialTransaction].self, forKey: .financialTransactionsAlt))
+        self.investmentItems = (try? container.decodeIfPresent([InvestmentItem].self, forKey: .investmentItems))
+            ?? (try? container.decodeIfPresent([InvestmentItem].self, forKey: .investmentItemsAlt))
+        self.creditContracts = (try? container.decodeIfPresent([CreditContract].self, forKey: .creditContracts))
+            ?? (try? container.decodeIfPresent([CreditContract].self, forKey: .creditContractsAlt))
+        self.debtItems = (try? container.decodeIfPresent([DebtItem].self, forKey: .debtItems))
+            ?? (try? container.decodeIfPresent([DebtItem].self, forKey: .debtItemsAlt))
+        self.categoryProvisions = (try? container.decodeIfPresent([CategoryProvision].self, forKey: .categoryProvisions))
+            ?? (try? container.decodeIfPresent([CategoryProvision].self, forKey: .categoryProvisionsAlt))
+        self.categoryQuotaRules = (try? container.decodeIfPresent([CategoryQuotaRule].self, forKey: .categoryQuotaRules))
+            ?? (try? container.decodeIfPresent([CategoryQuotaRule].self, forKey: .categoryQuotaRulesAlt))
+        self.chatMessages = (try? container.decodeIfPresent([ChatMessage].self, forKey: .chatMessages))
+            ?? (try? container.decodeIfPresent([ChatMessage].self, forKey: .chatMessagesAlt))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(bankAccounts, forKey: .bankAccounts)
+        try container.encodeIfPresent(categories, forKey: .categories)
+        try container.encodeIfPresent(financialTransactions, forKey: .financialTransactions)
+        try container.encodeIfPresent(investmentItems, forKey: .investmentItems)
+        try container.encodeIfPresent(creditContracts, forKey: .creditContracts)
+        try container.encodeIfPresent(debtItems, forKey: .debtItems)
+        try container.encodeIfPresent(categoryProvisions, forKey: .categoryProvisions)
+        try container.encodeIfPresent(categoryQuotaRules, forKey: .categoryQuotaRules)
+        try container.encodeIfPresent(chatMessages, forKey: .chatMessages)
     }
 }
 

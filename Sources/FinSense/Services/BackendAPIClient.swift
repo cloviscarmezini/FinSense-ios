@@ -15,6 +15,39 @@ public final class BackendAPIClient {
         self.bearerToken = token
     }
 
+    public static func makeFlexibleDateDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            if let dateStr = try? container.decode(String.self) {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let d = isoFormatter.date(from: dateStr) { return d }
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                if let d = isoFormatter.date(from: dateStr) { return d }
+
+                let df = DateFormatter()
+                df.locale = Locale(identifier: "en_US_POSIX")
+                for fmt in [
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZZZZZ",
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
+                    "yyyy-MM-dd'T'HH:mm:ssZZZZZ",
+                    "yyyy-MM-dd'T'HH:mm:ssZ",
+                    "yyyy-MM-dd HH:mm:ss",
+                    "yyyy-MM-dd"
+                ] {
+                    df.dateFormat = fmt
+                    if let d = df.date(from: dateStr) { return d }
+                }
+            }
+            if let num = try? container.decode(Double.self) {
+                return Date(timeIntervalSince1970: num > 1e11 ? num / 1000.0 : num)
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format")
+        }
+        return decoder
+    }
+
     public func pushPull(
         baseURL: String,
         requestPayload: SyncPushPullRequest,
@@ -31,7 +64,7 @@ public final class BackendAPIClient {
         if let authToken = token ?? bearerToken {
             req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
-        req.timeoutInterval = 15.0
+        req.timeoutInterval = 25.0
 
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -47,9 +80,7 @@ public final class BackendAPIClient {
             throw URLError(httpRes.statusCode == 401 || httpRes.statusCode == 403 ? .userAuthenticationRequired : .badServerResponse)
         }
 
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        let decoder = Self.makeFlexibleDateDecoder()
         return try decoder.decode(SyncPushPullResponse.self, from: data)
     }
 
@@ -71,7 +102,7 @@ public final class BackendAPIClient {
             throw URLError(.badServerResponse)
         }
 
-        let decoder = JSONDecoder()
+        let decoder = Self.makeFlexibleDateDecoder()
         return try decoder.decode(T.self, from: data)
     }
 
@@ -110,7 +141,7 @@ public final class BackendAPIClient {
             throw URLError(httpRes.statusCode == 401 || httpRes.statusCode == 403 ? .userAuthenticationRequired : .badServerResponse)
         }
 
-        let decoder = JSONDecoder()
+        let decoder = Self.makeFlexibleDateDecoder()
         return try decoder.decode(Res.self, from: data)
     }
 }

@@ -65,6 +65,45 @@ public struct BankAccount: Identifiable, Codable, Hashable {
         self.accountNumber = accountNumber
         self.createdAt = createdAt
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, bankPresetId, customImagePath, iconSymbol, colorHex, initialBalance, agency, accountNumber, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.id = (try? c.decode(UUID.self, forKey: AnyKey("id"))) ?? UUID()
+        self.name = (try? c.decodeIfPresent(String.self, forKey: AnyKey("name"))) ?? ""
+        self.bankPresetId = (try? c.decodeIfPresent(String.self, forKey: AnyKey("bankPresetId")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("bank_preset_id")))
+        self.customImagePath = (try? c.decodeIfPresent(String.self, forKey: AnyKey("customImagePath")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("custom_image_path")))
+        self.iconSymbol = (try? c.decodeIfPresent(String.self, forKey: AnyKey("iconSymbol")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("icon_symbol"))) ?? "building.columns.fill"
+        self.colorHex = (try? c.decodeIfPresent(String.self, forKey: AnyKey("colorHex")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("color_hex"))) ?? "#EC7000"
+        self.initialBalance = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("initialBalance")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("initial_balance"))) ?? 0.0
+        self.agency = (try? c.decodeIfPresent(String.self, forKey: AnyKey("agency"))) ?? ""
+        self.accountNumber = (try? c.decodeIfPresent(String.self, forKey: AnyKey("accountNumber")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("account_number"))) ?? ""
+        self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encodeIfPresent(bankPresetId, forKey: .bankPresetId)
+        try c.encodeIfPresent(customImagePath, forKey: .customImagePath)
+        try c.encode(iconSymbol, forKey: .iconSymbol)
+        try c.encode(colorHex, forKey: .colorHex)
+        try c.encode(initialBalance, forKey: .initialBalance)
+        try c.encode(agency, forKey: .agency)
+        try c.encode(accountNumber, forKey: .accountNumber)
+        try c.encode(createdAt, forKey: .createdAt)
+    }
 }
 
 public enum BrazilianBanksCatalog {

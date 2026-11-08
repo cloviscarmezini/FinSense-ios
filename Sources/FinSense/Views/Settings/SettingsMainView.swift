@@ -150,7 +150,9 @@ public struct SettingsMainView: View {
                 }
             }
             .sheet(isPresented: $isAuthSheetPresented) {
-                AuthSheetView(authService: authService, baseURL: syncService.baseURLString)
+                AuthSheetView(authService: authService, baseURL: syncService.baseURLString) {
+                    syncService.performSync()
+                }
             }
             .confirmationDialog(
                 "Deseja realmente sair da sua conta?",

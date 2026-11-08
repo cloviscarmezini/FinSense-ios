@@ -62,6 +62,57 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
         self.createdAt = createdAt
     }
 
+    enum CodingKeys: String, CodingKey {
+        case id, seriesId, categoryId, name, iconSymbol, year, month, plannedQuantity, estimatedUnitPrice
+        case repeatForFutureMonths, monthlyOverrides, excludedYearMonthKeys, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.id = (try? c.decode(UUID.self, forKey: AnyKey("id"))) ?? UUID()
+        self.seriesId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("seriesId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("series_id"))) ?? id
+
+        if let cat = try? c.decode(UUID.self, forKey: AnyKey("categoryId")) { self.categoryId = cat }
+        else if let cat = try? c.decode(UUID.self, forKey: AnyKey("category_id")) { self.categoryId = cat }
+        else { self.categoryId = UUID() }
+
+        self.name = (try? c.decodeIfPresent(String.self, forKey: AnyKey("name"))) ?? ""
+        self.iconSymbol = (try? c.decodeIfPresent(String.self, forKey: AnyKey("iconSymbol")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("icon_symbol"))) ?? "shippingbox.fill"
+        self.year = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("year"))) ?? 2026
+        self.month = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("month"))) ?? 1
+        self.plannedQuantity = max(0, (try? c.decodeIfPresent(Int.self, forKey: AnyKey("plannedQuantity")))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("planned_quantity"))) ?? 0)
+        self.estimatedUnitPrice = max(0, (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimatedUnitPrice")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimated_unit_price"))) ?? 0.0)
+        self.repeatForFutureMonths = (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("repeatForFutureMonths")))
+            ?? (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("repeat_for_future_months"))) ?? true
+        self.monthlyOverrides = (try? c.decodeIfPresent([Int: CategoryQuotaMonthlyOverride].self, forKey: AnyKey("monthlyOverrides")))
+            ?? (try? c.decodeIfPresent([Int: CategoryQuotaMonthlyOverride].self, forKey: AnyKey("monthly_overrides")))
+        self.excludedYearMonthKeys = (try? c.decodeIfPresent(Set<Int>.self, forKey: AnyKey("excludedYearMonthKeys")))
+            ?? (try? c.decodeIfPresent(Set<Int>.self, forKey: AnyKey("excluded_year_month_keys")))
+        self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(seriesId, forKey: .seriesId)
+        try c.encode(categoryId, forKey: .categoryId)
+        try c.encode(name, forKey: .name)
+        try c.encode(iconSymbol, forKey: .iconSymbol)
+        try c.encode(year, forKey: .year)
+        try c.encode(month, forKey: .month)
+        try c.encode(plannedQuantity, forKey: .plannedQuantity)
+        try c.encode(estimatedUnitPrice, forKey: .estimatedUnitPrice)
+        try c.encode(repeatForFutureMonths, forKey: .repeatForFutureMonths)
+        try c.encodeIfPresent(monthlyOverrides, forKey: .monthlyOverrides)
+        try c.encodeIfPresent(excludedYearMonthKeys, forKey: .excludedYearMonthKeys)
+        try c.encode(createdAt, forKey: .createdAt)
+    }
+
     public var yearMonthKey: Int {
         year * 100 + month
     }

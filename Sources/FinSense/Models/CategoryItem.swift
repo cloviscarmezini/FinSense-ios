@@ -42,6 +42,35 @@ public struct CategoryItem: Identifiable, Codable, Hashable {
         self.keywords = keywords
         self.isSystemDefault = isSystemDefault
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type, iconSymbol, colorHex, keywords, isSystemDefault
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.id = (try? c.decode(UUID.self, forKey: AnyKey("id"))) ?? UUID()
+        self.name = (try? c.decodeIfPresent(String.self, forKey: AnyKey("name"))) ?? ""
+        self.type = (try? c.decodeIfPresent(TransactionType.self, forKey: AnyKey("type"))) ?? .expense
+        self.iconSymbol = (try? c.decodeIfPresent(String.self, forKey: AnyKey("iconSymbol")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("icon_symbol"))) ?? "folder.fill"
+        self.colorHex = (try? c.decodeIfPresent(String.self, forKey: AnyKey("colorHex")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("color_hex"))) ?? "#64748B"
+        self.keywords = (try? c.decodeIfPresent([String].self, forKey: AnyKey("keywords"))) ?? []
+        self.isSystemDefault = (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("isSystemDefault")))
+            ?? (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("is_system_default"))) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(type, forKey: .type)
+        try c.encode(iconSymbol, forKey: .iconSymbol)
+        try c.encode(colorHex, forKey: .colorHex)
+        try c.encode(keywords, forKey: .keywords)
+        try c.encode(isSystemDefault, forKey: .isSystemDefault)
+    }
 }
 
 public enum DefaultCategoriesCatalog {

@@ -68,6 +68,10 @@ public struct ContentView: View {
             store.cloudSyncService = syncService
             syncService.store = store
             syncService.authService = authService
+            if authService.isAuthenticated {
+                syncService.isEnabled = true
+                syncService.scheduleSync(delaySeconds: 0.5)
+            }
         }
     }
 }

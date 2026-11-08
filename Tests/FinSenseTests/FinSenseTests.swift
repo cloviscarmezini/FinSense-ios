@@ -188,9 +188,84 @@ final class FinSenseTests: XCTestCase {
         let decoded = try decoder.decode(SyncPushPullRequest.self, from: data)
 
         XCTAssertEqual(decoded.clientId, "test-client-id")
+        XCTAssertEqual(decoded.sinceRevision, 42)
         XCTAssertEqual(decoded.clientLastSyncRevision, 42)
         XCTAssertEqual(decoded.mutations.count, 1)
         XCTAssertEqual(decoded.mutations.first?.entityName, "bank_accounts")
+    }
+
+    func testServerPayloadSafeDecoding() throws {
+        let sampleServerJSON = """
+        {
+            "server_current_revision": 1717,
+            "latest_revision": 1717,
+            "applied_mutation_ids": [],
+            "acknowledged_mutation_ids": [],
+            "rejected_mutations": [],
+            "server_changes": [
+                {
+                    "mutation_id": "11111111-1111-1111-1111-111111111111",
+                    "entity_name": "financial_transactions",
+                    "entity_id": "22222222-2222-2222-2222-222222222222",
+                    "operation": "INSERT",
+                    "updated_at": "2026-11-08T22:43:21.74302+00:00",
+                    "data": {
+                        "id": "22222222-2222-2222-2222-222222222222",
+                        "user_id": "33333333-3333-3333-3333-333333333333",
+                        "account_id": "44444444-4444-4444-4444-444444444444",
+                        "category_id": "55555555-5555-5555-5555-555555555555",
+                        "name": "Financiamento Imóvel",
+                        "details": null,
+                        "amount": 2658.04,
+                        "date": "2026-11-08T22:43:21.74302+00:00",
+                        "type": "expense",
+                        "is_paid": false,
+                        "statement_occurrence_index": 1,
+                        "recurrence_mode": "installment",
+                        "created_at": "2026-11-08T22:43:21.74302+00:00"
+                    }
+                }
+            ],
+            "deltas": {
+                "bank_accounts": [
+                    {
+                        "id": "44444444-4444-4444-4444-444444444444",
+                        "name": "Itaú",
+                        "initial_balance": 1500.0,
+                        "agency": null,
+                        "account_number": null,
+                        "created_at": "2026-11-08T22:43:21.724145+00:00"
+                    }
+                ],
+                "financial_transactions": [
+                    {
+                        "id": "22222222-2222-2222-2222-222222222222",
+                        "account_id": "44444444-4444-4444-4444-444444444444",
+                        "category_id": "55555555-5555-5555-5555-555555555555",
+                        "name": "Financiamento Imóvel",
+                        "details": null,
+                        "amount": 2658.04,
+                        "date": "2026-11-08T22:43:21.74302+00:00",
+                        "type": "expense",
+                        "is_paid": false,
+                        "created_at": "2026-11-08T22:43:21.74302+00:00"
+                    }
+                ]
+            },
+            "tombstones": []
+        }
+        """.data(using: .utf8)!
+
+        let decoder = BackendAPIClient.makeFlexibleDateDecoder()
+        let response = try decoder.decode(SyncPushPullResponse.self, from: sampleServerJSON)
+
+        XCTAssertEqual(response.latestRevision, 1717)
+        XCTAssertEqual(response.serverChanges?.count, 1)
+        XCTAssertEqual(response.deltas?.bankAccounts?.count, 1)
+        XCTAssertEqual(response.deltas?.financialTransactions?.count, 1)
+        XCTAssertEqual(response.deltas?.bankAccounts?.first?.name, "Itaú")
+        XCTAssertEqual(response.deltas?.financialTransactions?.first?.amount, 2658.04)
+        XCTAssertEqual(response.deltas?.financialTransactions?.first?.isPaid, false)
     }
 
     func testAuthModelsSerialization() throws {

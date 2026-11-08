@@ -23,6 +23,7 @@ public final class CloudSyncService: ObservableObject {
     @AppStorage("cloud_sync_base_url") public var baseURLString: String = "http://localhost:8080/api/v1"
     @AppStorage("cloud_sync_client_id") public var clientId: String = UUID().uuidString
     @AppStorage("cloud_sync_last_revision") public var lastServerRevision: Int = 0
+    @AppStorage("cloud_sync_last_user_id") public var lastSyncedUserId: String = ""
 
     public var canSync: Bool {
         isEnabled && (authService?.isAuthenticated ?? false)
@@ -41,11 +42,32 @@ public final class CloudSyncService: ObservableObject {
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] isAuth in
                     guard let self else { return }
-                    self.evaluateInitialStatus()
-                    if isAuth && self.isEnabled {
-                        self.scheduleSync(delaySeconds: 0.5)
-                    }
+                    self.handleAuthChange(isAuth: isAuth)
                 }
+            if authService?.isAuthenticated ?? false {
+                handleAuthChange(isAuth: true)
+            } else {
+                evaluateInitialStatus()
+            }
+        }
+    }
+
+    private func handleAuthChange(isAuth: Bool) {
+        if isAuth {
+            let currentUserId = authService?.currentUser?.id.uuidString ?? ""
+            if !currentUserId.isEmpty && currentUserId != lastSyncedUserId {
+                lastSyncedUserId = currentUserId
+                lastServerRevision = 0
+                outboxQueue.removeAll()
+                saveOutboxQueue()
+            }
+            if !isEnabled {
+                isEnabled = true
+            }
+            evaluateInitialStatus()
+            scheduleSync(delaySeconds: 0.3)
+        } else {
+            lastSyncedUserId = ""
             evaluateInitialStatus()
         }
     }
@@ -115,7 +137,11 @@ public final class CloudSyncService: ObservableObject {
         operation: SyncOperation,
         entity: T? = nil
     ) {
-        guard isEnabled else { return }
+        let isAuth = authService?.isAuthenticated ?? false
+        guard isEnabled || isAuth else { return }
+        if isAuth && !isEnabled {
+            isEnabled = true
+        }
 
         let payloadJSON: String? = {
             guard let entity, operation == .upsert else { return nil }
@@ -140,7 +166,7 @@ public final class CloudSyncService: ObservableObject {
         pendingMutationsCount = outboxQueue.count
         syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
         if canSync {
-            scheduleSync(delaySeconds: 2.5)
+            scheduleSync(delaySeconds: 1.5)
         }
     }
 
@@ -178,6 +204,7 @@ public final class CloudSyncService: ObservableObject {
         let batchToSend = Array(outboxQueue.prefix(250))
         let payload = SyncPushPullRequest(
             clientId: clientId,
+            sinceRevision: Int64(lastServerRevision),
             clientLastSyncRevision: Int64(lastServerRevision),
             mutations: batchToSend.map { mut in
                 SyncMutationDTO(
@@ -203,10 +230,11 @@ public final class CloudSyncService: ObservableObject {
             saveOutboxQueue()
             pendingMutationsCount = outboxQueue.count
 
+            if let deltas = response.deltas {
+                applyDeltasToStore(deltas, tombstones: response.tombstones ?? [], into: store)
+            }
             if let changes = response.serverChanges, !changes.isEmpty {
                 applyServerChanges(changes, into: store)
-            } else if let deltas = response.deltas, let tombstones = response.tombstones {
-                applyDeltasToStore(deltas, tombstones: tombstones, into: store)
             }
 
             lastServerRevision = Int(response.latestRevision)
@@ -231,9 +259,7 @@ public final class CloudSyncService: ObservableObject {
     }
 
     private func applyServerChanges(_ changes: [SyncMutationDTO], into store: FinancialDataStore) {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        let decoder = BackendAPIClient.makeFlexibleDateDecoder()
 
         for change in changes {
             if change.operation == "DELETE" {
@@ -296,6 +322,7 @@ public final class CloudSyncService: ObservableObject {
             }
         }
         store.saveToDisk()
+        store.objectWillChange.send()
     }
 
     private func applyDeltasToStore(
@@ -391,6 +418,7 @@ public final class CloudSyncService: ObservableObject {
         }
 
         store.saveToDisk()
+        store.objectWillChange.send()
     }
 
     private func saveOutboxQueue() {

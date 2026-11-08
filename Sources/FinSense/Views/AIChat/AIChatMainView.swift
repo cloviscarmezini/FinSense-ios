@@ -39,7 +39,9 @@ public struct AIChatMainView: View {
                 }
             }
             .sheet(isPresented: $isAuthSheetPresented) {
-                AuthSheetView(authService: authService, baseURL: syncService.baseURLString)
+                AuthSheetView(authService: authService, baseURL: syncService.baseURLString) {
+                    syncService.performSync()
+                }
             }
         }
     }
