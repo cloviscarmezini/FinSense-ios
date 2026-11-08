@@ -225,10 +225,16 @@ public final class CloudSyncService: ObservableObject {
                 token: authService?.accessToken
             )
 
-            let ackSet = Set(response.acknowledgedMutationIds)
-            outboxQueue.removeAll { ackSet.contains($0.id) }
+            let ackIds = response.acknowledgedMutationIds
+            let rejectedIds = response.rejectedMutations.map(\.mutationId)
+            let processedSet = Set(ackIds + rejectedIds)
+            outboxQueue.removeAll { processedSet.contains($0.id) }
             saveOutboxQueue()
             pendingMutationsCount = outboxQueue.count
+
+            if !response.rejectedMutations.isEmpty {
+                print("FinSense CloudSync: \(response.rejectedMutations.count) mutations rejected by server.")
+            }
 
             if let deltas = response.deltas {
                 applyDeltasToStore(deltas, tombstones: response.tombstones ?? [], into: store)

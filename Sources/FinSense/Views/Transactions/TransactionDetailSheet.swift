@@ -29,6 +29,24 @@ public struct TransactionDetailSheet: View {
         self.syncService = syncService
         self.editingTransaction = editingTransaction
 
+        let initialType: TransactionType
+        if let editing = editingTransaction {
+            initialType = editing.type
+        } else if let parsed = prefilledParsed {
+            initialType = parsed.type.lowercased() == "receita" ? .income : .expense
+        } else {
+            initialType = .expense
+        }
+
+        let fallbackAccId = editingTransaction?.accountId
+            ?? store.accounts.first?.id
+            ?? UUID()
+
+        let fallbackCatId = editingTransaction?.categoryId
+            ?? store.categories.first(where: { $0.type == initialType })?.id
+            ?? store.categories.first?.id
+            ?? UUID()
+
         if let editing = editingTransaction {
             _name = State(initialValue: editing.name)
             _details = State(initialValue: editing.details)
@@ -43,11 +61,22 @@ public struct TransactionDetailSheet: View {
         } else if let parsed = prefilledParsed {
             _name = State(initialValue: parsed.description)
             _amountString = State(initialValue: String(format: "%.2f", parsed.amount))
-            _type = State(initialValue: parsed.type.lowercased() == "receita" ? .income : .expense)
+            _type = State(initialValue: initialType)
             _isPaid = State(initialValue: true)
             _date = State(initialValue: Date())
-            _selectedCategoryId = State(initialValue: store.categories.first?.id ?? UUID())
-            _selectedAccountId = State(initialValue: store.accounts.first?.id ?? UUID())
+            _selectedCategoryId = State(initialValue: fallbackCatId)
+            _selectedAccountId = State(initialValue: fallbackAccId)
+        } else {
+            _name = State(initialValue: "")
+            _details = State(initialValue: "")
+            _amountString = State(initialValue: "")
+            _date = State(initialValue: Date())
+            _type = State(initialValue: initialType)
+            _isPaid = State(initialValue: true)
+            _selectedCategoryId = State(initialValue: fallbackCatId)
+            _selectedAccountId = State(initialValue: fallbackAccId)
+            _recurrenceMode = State(initialValue: .single)
+            _installmentTotal = State(initialValue: 12)
         }
     }
 
@@ -132,10 +161,16 @@ public struct TransactionDetailSheet: View {
                 }
             }
             .onAppear {
-                if selectedAccountId == UUID(), let firstAcc = store.accounts.first {
+                if !store.accounts.contains(where: { $0.id == selectedAccountId }), let firstAcc = store.accounts.first {
                     selectedAccountId = firstAcc.id
                 }
-                if selectedCategoryId == UUID(), let firstCat = store.categories.first(where: { $0.type == type }) {
+                if !store.categories.contains(where: { $0.id == selectedCategoryId }), let firstCat = store.categories.first(where: { $0.type == type }) ?? store.categories.first {
+                    selectedCategoryId = firstCat.id
+                }
+            }
+            .onChange(of: type) { newType in
+                if store.categories.first(where: { $0.id == selectedCategoryId })?.type != newType,
+                   let firstCat = store.categories.first(where: { $0.type == newType }) {
                     selectedCategoryId = firstCat.id
                 }
             }
@@ -147,6 +182,14 @@ public struct TransactionDetailSheet: View {
 
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+        let effectiveAccountId: UUID = store.accounts.contains(where: { $0.id == selectedAccountId })
+            ? selectedAccountId
+            : (store.accounts.first?.id ?? selectedAccountId)
+
+        let effectiveCategoryId: UUID = store.categories.contains(where: { $0.id == selectedCategoryId })
+            ? selectedCategoryId
+            : (store.categories.first(where: { $0.type == type })?.id ?? store.categories.first?.id ?? selectedCategoryId)
+
         if var editing = editingTransaction {
             editing.name = name
             editing.details = details
@@ -154,8 +197,8 @@ public struct TransactionDetailSheet: View {
             editing.date = date
             editing.type = type
             editing.isPaid = isPaid
-            editing.categoryId = selectedCategoryId
-            editing.accountId = selectedAccountId
+            editing.categoryId = effectiveCategoryId
+            editing.accountId = effectiveAccountId
             editing.recurrenceMode = recurrenceMode
             if recurrenceMode == .installment {
                 editing.installmentTotal = installmentTotal
@@ -176,8 +219,8 @@ public struct TransactionDetailSheet: View {
                         date: installmentDate,
                         type: type,
                         isPaid: i == 1 ? isPaid : false,
-                        categoryId: selectedCategoryId,
-                        accountId: selectedAccountId,
+                        categoryId: effectiveCategoryId,
+                        accountId: effectiveAccountId,
                         recurrenceMode: .installment,
                         installmentIndex: i,
                         installmentTotal: installmentTotal,
@@ -192,8 +235,8 @@ public struct TransactionDetailSheet: View {
                     date: date,
                     type: type,
                     isPaid: isPaid,
-                    categoryId: selectedCategoryId,
-                    accountId: selectedAccountId,
+                    categoryId: effectiveCategoryId,
+                    accountId: effectiveAccountId,
                     recurrenceMode: recurrenceMode
                 )
             }

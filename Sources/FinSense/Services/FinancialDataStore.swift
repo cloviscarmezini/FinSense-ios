@@ -304,6 +304,14 @@ public final class FinancialDataStore: ObservableObject {
         installmentTotal: Int? = nil,
         seriesGroupId: UUID? = nil
     ) -> FinancialTransaction {
+        let effectiveAccountId: UUID = accounts.contains(where: { $0.id == accountId })
+            ? accountId
+            : (accounts.first?.id ?? accountId)
+
+        let effectiveCategoryId: UUID = categories.contains(where: { $0.id == categoryId })
+            ? categoryId
+            : (categories.first(where: { $0.type == type })?.id ?? categories.first?.id ?? categoryId)
+
         let tx = FinancialTransaction(
             name: name,
             details: details,
@@ -311,8 +319,8 @@ public final class FinancialDataStore: ObservableObject {
             date: date,
             type: type,
             isPaid: isPaid,
-            categoryId: categoryId,
-            accountId: accountId,
+            categoryId: effectiveCategoryId,
+            accountId: effectiveAccountId,
             recurrenceMode: recurrenceMode,
             seriesGroupId: seriesGroupId,
             installmentIndex: installmentIndex,
@@ -325,10 +333,18 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func updateTransaction(_ tx: FinancialTransaction) {
-        if let idx = transactions.firstIndex(where: { $0.id == tx.id }) {
-            transactions[idx] = tx
+        var validated = tx
+        if !accounts.contains(where: { $0.id == validated.accountId }), let fallbackAcc = accounts.first {
+            validated.accountId = fallbackAcc.id
+        }
+        if !categories.contains(where: { $0.id == validated.categoryId }), let fallbackCat = categories.first(where: { $0.type == validated.type }) ?? categories.first {
+            validated.categoryId = fallbackCat.id
+        }
+
+        if let idx = transactions.firstIndex(where: { $0.id == validated.id }) {
+            transactions[idx] = validated
             saveToDisk()
-            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .upsert, entity: tx)
+            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: validated.id, operation: .upsert, entity: validated)
         }
     }
 
