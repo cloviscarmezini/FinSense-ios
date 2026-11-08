@@ -24,6 +24,10 @@ public final class CloudSyncService: ObservableObject {
     @AppStorage("cloud_sync_client_id") public var clientId: String = UUID().uuidString
     @AppStorage("cloud_sync_last_revision") public var lastServerRevision: Int = 0
 
+    public var canSync: Bool {
+        isEnabled && (authService?.isAuthenticated ?? false)
+    }
+
     private var outboxQueue: [LocalSyncMutation] = []
     private let outboxFileURL: URL
     private var debounceTimer: AnyCancellable? = nil
@@ -43,6 +47,23 @@ public final class CloudSyncService: ObservableObject {
                     }
                 }
             evaluateInitialStatus()
+        }
+    }
+
+    public func resetSyncState() {
+        lastServerRevision = 0
+        lastSyncDate = nil
+        outboxQueue.removeAll()
+        saveOutboxQueue()
+        pendingMutationsCount = 0
+        evaluateInitialStatus()
+    }
+
+    private func enqueueMutation(_ mutation: LocalSyncMutation) {
+        if let existingIndex = outboxQueue.firstIndex(where: { $0.entityName == mutation.entityName && $0.entityId == mutation.entityId }) {
+            outboxQueue[existingIndex] = mutation
+        } else {
+            outboxQueue.append(mutation)
         }
     }
 
@@ -94,11 +115,14 @@ public final class CloudSyncService: ObservableObject {
         operation: SyncOperation,
         entity: T? = nil
     ) {
-        guard isEnabled, (authService?.isAuthenticated ?? false) else { return }
+        guard isEnabled else { return }
 
         let payloadJSON: String? = {
-            guard let entity, operation == .upsert,
-                  let data = try? JSONEncoder().encode(entity),
+            guard let entity, operation == .upsert else { return nil }
+            let encoder = JSONEncoder()
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            encoder.dateEncodingStrategy = .iso8601
+            guard let data = try? encoder.encode(entity),
                   let str = String(data: data, encoding: .utf8) else { return nil }
             return str
         }()
@@ -111,11 +135,13 @@ public final class CloudSyncService: ObservableObject {
             payloadJSON: payloadJSON
         )
 
-        outboxQueue.append(mutation)
+        enqueueMutation(mutation)
         saveOutboxQueue()
         pendingMutationsCount = outboxQueue.count
         syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
-        scheduleSync(delaySeconds: 2.5)
+        if canSync {
+            scheduleSync(delaySeconds: 2.5)
+        }
     }
 
     public func scheduleSync(delaySeconds: Double) {
@@ -177,9 +203,13 @@ public final class CloudSyncService: ObservableObject {
             saveOutboxQueue()
             pendingMutationsCount = outboxQueue.count
 
-            applyDeltasToStore(response.deltas, tombstones: response.tombstones, into: store)
+            if let changes = response.serverChanges, !changes.isEmpty {
+                applyServerChanges(changes, into: store)
+            } else if let deltas = response.deltas, let tombstones = response.tombstones {
+                applyDeltasToStore(deltas, tombstones: tombstones, into: store)
+            }
 
-            lastServerRevision = Int(response.serverCurrentRevision)
+            lastServerRevision = Int(response.latestRevision)
             let now = Date()
             lastSyncDate = now
 
@@ -198,6 +228,74 @@ public final class CloudSyncService: ObservableObject {
         }
 
         isSyncing = false
+    }
+
+    private func applyServerChanges(_ changes: [SyncMutationDTO], into store: FinancialDataStore) {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+
+        for change in changes {
+            if change.operation == "DELETE" {
+                switch change.entityName {
+                case "financial_transactions": store.transactions.removeAll { $0.id == change.entityId }
+                case "bank_accounts": store.accounts.removeAll { $0.id == change.entityId }
+                case "categories": store.categories.removeAll { $0.id == change.entityId }
+                case "investment_items": store.investments.removeAll { $0.id == change.entityId }
+                case "debt_items": store.debts.removeAll { $0.id == change.entityId }
+                case "credit_contracts": store.contracts.removeAll { $0.id == change.entityId }
+                case "category_provisions": store.provisions.removeAll { $0.id == change.entityId }
+                case "category_quota_rules": store.categoryQuotas.removeAll { $0.id == change.entityId }
+                default: break
+                }
+            } else if let dataMap = change.data ?? change.payload,
+                      let rawData = try? JSONEncoder().encode(dataMap) {
+                switch change.entityName {
+                case "financial_transactions":
+                    if let item = try? decoder.decode(FinancialTransaction.self, from: rawData) {
+                        if let idx = store.transactions.firstIndex(where: { $0.id == item.id }) { store.transactions[idx] = item }
+                        else { store.transactions.append(item) }
+                    }
+                case "bank_accounts":
+                    if let item = try? decoder.decode(BankAccount.self, from: rawData) {
+                        if let idx = store.accounts.firstIndex(where: { $0.id == item.id }) { store.accounts[idx] = item }
+                        else { store.accounts.append(item) }
+                    }
+                case "categories":
+                    if let item = try? decoder.decode(CategoryItem.self, from: rawData) {
+                        if let idx = store.categories.firstIndex(where: { $0.id == item.id }) { store.categories[idx] = item }
+                        else { store.categories.append(item) }
+                    }
+                case "investment_items":
+                    if let item = try? decoder.decode(InvestmentItem.self, from: rawData) {
+                        if let idx = store.investments.firstIndex(where: { $0.id == item.id }) { store.investments[idx] = item }
+                        else { store.investments.append(item) }
+                    }
+                case "debt_items":
+                    if let item = try? decoder.decode(DebtItem.self, from: rawData) {
+                        if let idx = store.debts.firstIndex(where: { $0.id == item.id }) { store.debts[idx] = item }
+                        else { store.debts.append(item) }
+                    }
+                case "credit_contracts":
+                    if let item = try? decoder.decode(CreditContract.self, from: rawData) {
+                        if let idx = store.contracts.firstIndex(where: { $0.id == item.id }) { store.contracts[idx] = item }
+                        else { store.contracts.append(item) }
+                    }
+                case "category_provisions":
+                    if let item = try? decoder.decode(CategoryProvision.self, from: rawData) {
+                        if let idx = store.provisions.firstIndex(where: { $0.id == item.id }) { store.provisions[idx] = item }
+                        else { store.provisions.append(item) }
+                    }
+                case "category_quota_rules":
+                    if let item = try? decoder.decode(CategoryQuotaRule.self, from: rawData) {
+                        if let idx = store.categoryQuotas.firstIndex(where: { $0.id == item.id }) { store.categoryQuotas[idx] = item }
+                        else { store.categoryQuotas.append(item) }
+                    }
+                default: break
+                }
+            }
+        }
+        store.saveToDisk()
     }
 
     private func applyDeltasToStore(

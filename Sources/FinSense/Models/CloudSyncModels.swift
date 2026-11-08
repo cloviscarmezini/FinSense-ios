@@ -77,6 +77,7 @@ public struct SyncMutationDTO: Codable {
     public let entityId: UUID
     public let operation: String
     public let updatedAt: String
+    public let data: [String: AnyCodableValue]?
     public let payload: [String: AnyCodableValue]?
 
     public init(
@@ -92,6 +93,7 @@ public struct SyncMutationDTO: Codable {
         self.entityId = entityId
         self.operation = operation
         self.updatedAt = updatedAt
+        self.data = payload
         self.payload = payload
     }
 
@@ -101,37 +103,116 @@ public struct SyncMutationDTO: Codable {
         case entityId = "entity_id"
         case operation
         case updatedAt = "updated_at"
+        case data
         case payload
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.mutationId = try container.decode(UUID.self, forKey: .mutationId)
+        self.entityName = try container.decode(String.self, forKey: .entityName)
+        self.entityId = try container.decode(UUID.self, forKey: .entityId)
+        self.operation = try container.decode(String.self, forKey: .operation)
+        self.updatedAt = (try? container.decode(String.self, forKey: .updatedAt)) ?? ""
+        let d = try? container.decodeIfPresent([String: AnyCodableValue].self, forKey: .data)
+        let p = try? container.decodeIfPresent([String: AnyCodableValue].self, forKey: .payload)
+        self.data = d ?? p
+        self.payload = p ?? d
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(mutationId, forKey: .mutationId)
+        try container.encode(entityName, forKey: .entityName)
+        try container.encode(entityId, forKey: .entityId)
+        try container.encode(operation, forKey: .operation)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(data, forKey: .data)
+        try container.encodeIfPresent(payload, forKey: .payload)
     }
 }
 
 public struct SyncPushPullResponse: Codable {
     public let serverCurrentRevision: Int64
+    public let latestRevision: Int64
     public let acknowledgedMutationIds: [UUID]
+    public let appliedMutationIds: [UUID]
     public let rejectedMutations: [SyncRejectedMutationDTO]
-    public let deltas: SyncDeltasContainerDTO
-    public let tombstones: [SyncTombstoneDTO]
+    public let serverChanges: [SyncMutationDTO]?
+    public let deltas: SyncDeltasContainerDTO?
+    public let tombstones: [SyncTombstoneDTO]?
 
     public init(
         serverCurrentRevision: Int64,
+        latestRevision: Int64 = 0,
         acknowledgedMutationIds: [UUID],
-        rejectedMutations: [SyncRejectedMutationDTO],
-        deltas: SyncDeltasContainerDTO,
-        tombstones: [SyncTombstoneDTO]
+        appliedMutationIds: [UUID] = [],
+        rejectedMutations: [SyncRejectedMutationDTO] = [],
+        serverChanges: [SyncMutationDTO]? = nil,
+        deltas: SyncDeltasContainerDTO? = nil,
+        tombstones: [SyncTombstoneDTO]? = nil
     ) {
         self.serverCurrentRevision = serverCurrentRevision
+        self.latestRevision = latestRevision == 0 ? serverCurrentRevision : latestRevision
         self.acknowledgedMutationIds = acknowledgedMutationIds
+        self.appliedMutationIds = appliedMutationIds.isEmpty ? acknowledgedMutationIds : appliedMutationIds
         self.rejectedMutations = rejectedMutations
+        self.serverChanges = serverChanges
         self.deltas = deltas
         self.tombstones = tombstones
     }
 
     enum CodingKeys: String, CodingKey {
         case serverCurrentRevision = "server_current_revision"
+        case latestRevision = "latest_revision"
         case acknowledgedMutationIds = "acknowledged_mutation_ids"
+        case appliedMutationIds = "applied_mutation_ids"
         case rejectedMutations = "rejected_mutations"
+        case serverChanges = "server_changes"
         case deltas
         case tombstones
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let rev = try? container.decode(Int64.self, forKey: .serverCurrentRevision) {
+            self.serverCurrentRevision = rev
+            self.latestRevision = (try? container.decode(Int64.self, forKey: .latestRevision)) ?? rev
+        } else if let rev = try? container.decode(Int64.self, forKey: .latestRevision) {
+            self.serverCurrentRevision = rev
+            self.latestRevision = rev
+        } else {
+            self.serverCurrentRevision = 0
+            self.latestRevision = 0
+        }
+
+        if let acks = try? container.decode([UUID].self, forKey: .acknowledgedMutationIds) {
+            self.acknowledgedMutationIds = acks
+            self.appliedMutationIds = (try? container.decode([UUID].self, forKey: .appliedMutationIds)) ?? acks
+        } else if let apps = try? container.decode([UUID].self, forKey: .appliedMutationIds) {
+            self.acknowledgedMutationIds = apps
+            self.appliedMutationIds = apps
+        } else {
+            self.acknowledgedMutationIds = []
+            self.appliedMutationIds = []
+        }
+
+        self.rejectedMutations = (try? container.decodeIfPresent([SyncRejectedMutationDTO].self, forKey: .rejectedMutations)) ?? []
+        self.serverChanges = try? container.decodeIfPresent([SyncMutationDTO].self, forKey: .serverChanges)
+        self.deltas = try? container.decodeIfPresent(SyncDeltasContainerDTO.self, forKey: .deltas)
+        self.tombstones = try? container.decodeIfPresent([SyncTombstoneDTO].self, forKey: .tombstones)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(serverCurrentRevision, forKey: .serverCurrentRevision)
+        try container.encode(latestRevision, forKey: .latestRevision)
+        try container.encode(acknowledgedMutationIds, forKey: .acknowledgedMutationIds)
+        try container.encode(appliedMutationIds, forKey: .appliedMutationIds)
+        try container.encode(rejectedMutations, forKey: .rejectedMutations)
+        try container.encodeIfPresent(serverChanges, forKey: .serverChanges)
+        try container.encodeIfPresent(deltas, forKey: .deltas)
+        try container.encodeIfPresent(tombstones, forKey: .tombstones)
     }
 }
 

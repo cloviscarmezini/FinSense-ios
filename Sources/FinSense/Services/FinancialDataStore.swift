@@ -813,4 +813,17 @@ public final class FinancialDataStore: ObservableObject {
         chatHistory.removeAll()
         saveToDisk()
     }
+
+    public func resetAllData() {
+        transactions.removeAll()
+        accounts.removeAll()
+        categories.removeAll()
+        investments.removeAll()
+        debts.removeAll()
+        contracts.removeAll()
+        provisions.removeAll()
+        categoryQuotas.removeAll()
+        save()
+        cloudSyncService?.resetSyncState()
+    }
 }

@@ -34,6 +34,8 @@ public final class BackendAPIClient {
         req.timeoutInterval = 15.0
 
         let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .iso8601
         req.httpBody = try encoder.encode(requestPayload)
 
         let (data, response) = try await session.data(for: req)
@@ -46,6 +48,8 @@ public final class BackendAPIClient {
         }
 
         let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(SyncPushPullResponse.self, from: data)
     }
 
