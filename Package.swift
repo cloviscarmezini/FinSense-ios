@@ -8,13 +8,13 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
-        .library(
+        .executable(
             name: "FinSense",
             targets: ["FinSense"]
         )
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "FinSense",
             path: "Sources/FinSense"
         ),
