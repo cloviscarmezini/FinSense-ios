@@ -16,7 +16,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "FinSense",
-            path: "Sources/FinSense"
+            path: "Sources/FinSense",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(
             name: "FinSenseTests",

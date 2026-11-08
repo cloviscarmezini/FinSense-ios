@@ -32,6 +32,21 @@ if [ -n "$EXECUTABLE_PATH" ] && [ "$EXECUTABLE_PATH" != "$APP_BUNDLE_DIR/FinSens
     cp "$EXECUTABLE_PATH" "$APP_BUNDLE_DIR/FinSense"
 fi
 cp "$PROJECT_ROOT/Info.plist" "$APP_BUNDLE_DIR/Info.plist"
+
+# Compile AppIcon Asset Catalog into bundle
+if [ -d "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets" ]; then
+    xcrun actool "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets" \
+        --compile "$APP_BUNDLE_DIR" \
+        --platform iphonesimulator \
+        --minimum-deployment-target 17.0 \
+        --app-icon AppIcon \
+        --output-partial-info-plist "/tmp/actool_partial.plist" >> "$LOG_FILE" 2>&1 || true
+
+    if [ -f "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png" ]; then
+        cp "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png" "$APP_BUNDLE_DIR/AppIcon60x60@3x.png"
+    fi
+fi
+
 codesign --force --sign - --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1
 
 # Keep project root build/ directory synchronized
