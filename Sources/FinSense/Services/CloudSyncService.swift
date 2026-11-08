@@ -1,0 +1,318 @@
+// Sources/FinSense/Services/CloudSyncService.swift
+import Foundation
+import Combine
+import Network
+import SwiftUI
+import UIKit
+
+@MainActor
+public final class CloudSyncService: ObservableObject {
+    @Published public var syncStatus: SyncStatus = .disabled
+    @Published public var isSyncing: Bool = false
+    @Published public var pendingMutationsCount: Int = 0
+    @Published public var lastSyncDate: Date? = nil
+
+    @AppStorage("cloud_sync_enabled") public var isEnabled: Bool = false {
+        didSet {
+            evaluateInitialStatus()
+            if isEnabled {
+                scheduleSync(delaySeconds: 0.5)
+            }
+        }
+    }
+    @AppStorage("cloud_sync_base_url") public var baseURLString: String = "http://localhost:8080/api/v1"
+    @AppStorage("cloud_sync_client_id") public var clientId: String = UUID().uuidString
+    @AppStorage("cloud_sync_last_revision") public var lastServerRevision: Int = 0
+
+    private var outboxQueue: [LocalSyncMutation] = []
+    private let outboxFileURL: URL
+    private var debounceTimer: AnyCancellable? = nil
+    private let networkMonitor = NWPathMonitor()
+    private var isNetworkAvailable: Bool = true
+    public weak var store: FinancialDataStore?
+
+    public init(store: FinancialDataStore? = nil) {
+        self.store = store
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.outboxFileURL = docs.appendingPathComponent("sync_outbox_queue.json")
+        loadOutboxQueue()
+        startNetworkMonitoring()
+        evaluateInitialStatus()
+    }
+
+    private func evaluateInitialStatus() {
+        if !isEnabled {
+            syncStatus = .disabled
+        } else if !outboxQueue.isEmpty {
+            syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
+        } else if let last = lastSyncDate {
+            syncStatus = .synced(lastSync: last)
+        } else {
+            syncStatus = .synced(lastSync: Date())
+        }
+    }
+
+    private func startNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                guard let self else { return }
+                self.isNetworkAvailable = (path.status == .satisfied)
+                if self.isNetworkAvailable && self.isEnabled {
+                    self.scheduleSync(delaySeconds: 1.0)
+                } else if !self.isNetworkAvailable && self.isEnabled {
+                    self.syncStatus = .outOfSync(
+                        pendingCount: self.outboxQueue.count,
+                        reason: "Sem conexão com a internet"
+                    )
+                }
+            }
+        }
+        let queue = DispatchQueue(label: "br.com.finsense.ios.syncNetworkMonitor")
+        networkMonitor.start(queue: queue)
+    }
+
+    public func recordLocalMutation<T: Codable>(
+        entityName: String,
+        entityId: UUID,
+        operation: SyncOperation,
+        entity: T? = nil
+    ) {
+        guard isEnabled else { return }
+
+        let payloadJSON: String? = {
+            guard let entity, operation == .upsert,
+                  let data = try? JSONEncoder().encode(entity),
+                  let str = String(data: data, encoding: .utf8) else { return nil }
+            return str
+        }()
+
+        let mutation = LocalSyncMutation(
+            entityName: entityName,
+            entityId: entityId,
+            operation: operation,
+            updatedAt: Date(),
+            payloadJSON: payloadJSON
+        )
+
+        outboxQueue.append(mutation)
+        saveOutboxQueue()
+        pendingMutationsCount = outboxQueue.count
+        syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
+        scheduleSync(delaySeconds: 2.5)
+    }
+
+    public func scheduleSync(delaySeconds: Double) {
+        guard isEnabled, isNetworkAvailable else { return }
+        debounceTimer?.cancel()
+        debounceTimer = Just(())
+            .delay(for: .seconds(delaySeconds), scheduler: RunLoop.main)
+            .sink { [weak self] in
+                self?.performSync()
+            }
+    }
+
+    public func performSync() {
+        guard isEnabled else { syncStatus = .disabled; return }
+        guard isNetworkAvailable else {
+            syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sem internet")
+            return
+        }
+        guard !isSyncing else { return }
+
+        isSyncing = true
+        syncStatus = .syncing
+
+        Task {
+            await executeSyncPushPull()
+        }
+    }
+
+    private func executeSyncPushPull() async {
+        guard let store else { isSyncing = false; return }
+
+        let batchToSend = Array(outboxQueue.prefix(250))
+        let payload = SyncPushPullRequest(
+            clientId: clientId,
+            clientLastSyncRevision: Int64(lastServerRevision),
+            mutations: batchToSend.map { mut in
+                SyncMutationDTO(
+                    mutationId: mut.id,
+                    entityName: mut.entityName,
+                    entityId: mut.entityId,
+                    operation: mut.operation.rawValue,
+                    updatedAt: ISO8601DateFormatter().string(from: mut.updatedAt),
+                    payload: mut.payloadJSON.flatMap { try? JSONDecoder().decode([String: AnyCodableValue].self, from: Data($0.utf8)) }
+                )
+            }
+        )
+
+        do {
+            let response = try await BackendAPIClient.shared.pushPull(
+                baseURL: baseURLString,
+                requestPayload: payload
+            )
+
+            let ackSet = Set(response.acknowledgedMutationIds)
+            outboxQueue.removeAll { ackSet.contains($0.id) }
+            saveOutboxQueue()
+            pendingMutationsCount = outboxQueue.count
+
+            applyDeltasToStore(response.deltas, tombstones: response.tombstones, into: store)
+
+            lastServerRevision = Int(response.serverCurrentRevision)
+            let now = Date()
+            lastSyncDate = now
+
+            if outboxQueue.isEmpty {
+                syncStatus = .synced(lastSync: now)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else {
+                syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sincronizando lote seguinte...")
+                scheduleSync(delaySeconds: 0.5)
+            }
+        } catch {
+            // Degradação suave: servidor fora do ar ou timeout não trava o app
+            syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Servidor indisponível")
+        }
+
+        isSyncing = false
+    }
+
+    private func applyDeltasToStore(
+        _ deltas: SyncDeltasContainerDTO,
+        tombstones: [SyncTombstoneDTO],
+        into store: FinancialDataStore
+    ) {
+        for tomb in tombstones {
+            switch tomb.entityName {
+            case "financial_transactions": store.transactions.removeAll { $0.id == tomb.entityId }
+            case "bank_accounts": store.accounts.removeAll { $0.id == tomb.entityId }
+            case "categories": store.categories.removeAll { $0.id == tomb.entityId }
+            case "investment_items": store.investments.removeAll { $0.id == tomb.entityId }
+            case "debt_items": store.debts.removeAll { $0.id == tomb.entityId }
+            case "credit_contracts": store.contracts.removeAll { $0.id == tomb.entityId }
+            case "category_provisions": store.provisions.removeAll { $0.id == tomb.entityId }
+            case "category_quota_rules": store.categoryQuotas.removeAll { $0.id == tomb.entityId }
+            default: break
+            }
+        }
+
+        if let txs = deltas.financialTransactions {
+            for item in txs {
+                if let idx = store.transactions.firstIndex(where: { $0.id == item.id }) {
+                    store.transactions[idx] = item
+                } else {
+                    store.transactions.append(item)
+                }
+            }
+        }
+        if let accs = deltas.bankAccounts {
+            for item in accs {
+                if let idx = store.accounts.firstIndex(where: { $0.id == item.id }) {
+                    store.accounts[idx] = item
+                } else {
+                    store.accounts.append(item)
+                }
+            }
+        }
+        if let cats = deltas.categories {
+            for item in cats {
+                if let idx = store.categories.firstIndex(where: { $0.id == item.id }) {
+                    store.categories[idx] = item
+                } else {
+                    store.categories.append(item)
+                }
+            }
+        }
+        if let invs = deltas.investmentItems {
+            for item in invs {
+                if let idx = store.investments.firstIndex(where: { $0.id == item.id }) {
+                    store.investments[idx] = item
+                } else {
+                    store.investments.append(item)
+                }
+            }
+        }
+        if let debts = deltas.debtItems {
+            for item in debts {
+                if let idx = store.debts.firstIndex(where: { $0.id == item.id }) {
+                    store.debts[idx] = item
+                } else {
+                    store.debts.append(item)
+                }
+            }
+        }
+        if let contracts = deltas.creditContracts {
+            for item in contracts {
+                if let idx = store.contracts.firstIndex(where: { $0.id == item.id }) {
+                    store.contracts[idx] = item
+                } else {
+                    store.contracts.append(item)
+                }
+            }
+        }
+        if let provisions = deltas.categoryProvisions {
+            for item in provisions {
+                if let idx = store.provisions.firstIndex(where: { $0.id == item.id }) {
+                    store.provisions[idx] = item
+                } else {
+                    store.provisions.append(item)
+                }
+            }
+        }
+        if let quotas = deltas.categoryQuotaRules {
+            for item in quotas {
+                if let idx = store.categoryQuotas.firstIndex(where: { $0.id == item.id }) {
+                    store.categoryQuotas[idx] = item
+                } else {
+                    store.categoryQuotas.append(item)
+                }
+            }
+        }
+
+        store.saveToDisk()
+    }
+
+    private func saveOutboxQueue() {
+        guard let data = try? JSONEncoder().encode(outboxQueue) else { return }
+        try? data.write(to: outboxFileURL, options: .atomic)
+    }
+
+    private func loadOutboxQueue() {
+        guard let data = try? Data(contentsOf: outboxFileURL),
+              let decoded = try? JSONDecoder().decode([LocalSyncMutation].self, from: data) else {
+            self.outboxQueue = []
+            return
+        }
+        self.outboxQueue = decoded
+        self.pendingMutationsCount = decoded.count
+    }
+
+    /// Enfileira toda a base existente na outbox para sincronização com o backend (quando o usuário ativa a sincronização pela primeira vez)
+    public func queueEntireDatabaseForUpload(store: FinancialDataStore) {
+        for acc in store.accounts {
+            recordLocalMutation(entityName: "bank_accounts", entityId: acc.id, operation: .upsert, entity: acc)
+        }
+        for cat in store.categories {
+            recordLocalMutation(entityName: "categories", entityId: cat.id, operation: .upsert, entity: cat)
+        }
+        for tx in store.transactions {
+            recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .upsert, entity: tx)
+        }
+        for inv in store.investments {
+            recordLocalMutation(entityName: "investment_items", entityId: inv.id, operation: .upsert, entity: inv)
+        }
+        for debt in store.debts {
+            recordLocalMutation(entityName: "debt_items", entityId: debt.id, operation: .upsert, entity: debt)
+        }
+        for contract in store.contracts {
+            recordLocalMutation(entityName: "credit_contracts", entityId: contract.id, operation: .upsert, entity: contract)
+        }
+        for prov in store.provisions {
+            recordLocalMutation(entityName: "category_provisions", entityId: prov.id, operation: .upsert, entity: prov)
+        }
+        for quota in store.categoryQuotas {
+            recordLocalMutation(entityName: "category_quota_rules", entityId: quota.id, operation: .upsert, entity: quota)
+        }
+    }
+}
