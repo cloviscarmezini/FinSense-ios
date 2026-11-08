@@ -192,4 +192,62 @@ final class FinSenseTests: XCTestCase {
         XCTAssertEqual(decoded.mutations.count, 1)
         XCTAssertEqual(decoded.mutations.first?.entityName, "bank_accounts")
     }
+
+    func testAuthModelsSerialization() throws {
+        let login = LoginRequestDTO(email: "test@finsense.com", password: "secretPassword123")
+        let loginData = try JSONEncoder().encode(login)
+        let loginDecoded = try JSONDecoder().decode(LoginRequestDTO.self, from: loginData)
+        XCTAssertEqual(loginDecoded.email, "test@finsense.com")
+        XCTAssertEqual(loginDecoded.password, "secretPassword123")
+
+        let register = RegisterRequestDTO(email: "novo@finsense.com", password: "pass", fullName: "Usuário Teste")
+        let regData = try JSONEncoder().encode(register)
+        let regDecoded = try JSONDecoder().decode(RegisterRequestDTO.self, from: regData)
+        XCTAssertEqual(regDecoded.fullName, "Usuário Teste")
+        XCTAssertEqual(regDecoded.email, "novo@finsense.com")
+
+        let authResponseJSON = """
+        {
+            "access_token": "mock_jwt_token_12345",
+            "refresh_token": "mock_refresh_token_67890",
+            "token_type": "bearer",
+            "expires_in": 3600,
+            "user": {
+                "id": "11111111-2222-3333-4444-555555555555",
+                "email": "teste@finsense.com",
+                "full_name": "Maria Silva"
+            }
+        }
+        """.data(using: .utf8)!
+
+        let authResponse = try JSONDecoder().decode(AuthResponseDTO.self, from: authResponseJSON)
+        XCTAssertEqual(authResponse.accessToken, "mock_jwt_token_12345")
+        XCTAssertEqual(authResponse.refreshToken, "mock_refresh_token_67890")
+        XCTAssertEqual(authResponse.user.fullName, "Maria Silva")
+        XCTAssertEqual(authResponse.user.email, "teste@finsense.com")
+    }
+
+    @MainActor
+    func testCloudSyncDisabledWhenUnauthenticated() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let auth = AuthService()
+        // Garante que está deslogado
+        UserDefaults.standard.removeObject(forKey: "finsense_auth_access_token")
+        UserDefaults.standard.removeObject(forKey: "finsense_auth_refresh_token")
+        UserDefaults.standard.removeObject(forKey: "finsense_auth_user_summary")
+        auth.restoreSession()
+
+        XCTAssertFalse(auth.isAuthenticated)
+
+        let sync = CloudSyncService(store: store, authService: auth)
+        sync.isEnabled = true
+        sync.evaluateInitialStatus()
+
+        // Sem autenticação, o syncStatus deve ser disabled
+        if case .disabled = sync.syncStatus {
+            // Sucesso esperado
+        } else {
+            XCTFail("Status de sincronização deveria ser .disabled para usuário não autenticado")
+        }
+    }
 }
