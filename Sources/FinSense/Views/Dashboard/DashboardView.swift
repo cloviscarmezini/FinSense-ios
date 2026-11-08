@@ -4,6 +4,7 @@ import SwiftUI
 public struct DashboardView: View {
     @ObservedObject var store: FinancialDataStore
     @ObservedObject var syncService: CloudSyncService
+    @ObservedObject var authService: AuthService
     @Binding var selectedTab: AppTab
 
     @State private var isAddTransactionSheetPresented: Bool = false
@@ -13,10 +14,12 @@ public struct DashboardView: View {
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
+        authService: AuthService,
         selectedTab: Binding<AppTab>
     ) {
         self.store = store
         self.syncService = syncService
+        self.authService = authService
         self._selectedTab = selectedTab
     }
 
@@ -56,34 +59,36 @@ public struct DashboardView: View {
 
                             Spacer()
 
-                            // Indicador de Sincronização
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                syncService.performSync()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    if syncService.isSyncing {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle())
-                                            .scaleEffect(0.7)
-                                    } else {
-                                        Image(systemName: syncService.syncStatus.iconSymbol)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(syncStatusColor)
-                                    }
+                            // Indicador de Sincronização (Apenas quando autenticado)
+                            if authService.isAuthenticated {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    syncService.performSync()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        if syncService.isSyncing {
+                                            ProgressView()
+                                                .progressViewStyle(CircularProgressViewStyle())
+                                                .scaleEffect(0.7)
+                                        } else {
+                                            Image(systemName: syncService.syncStatus.iconSymbol)
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundStyle(syncStatusColor)
+                                        }
 
-                                    if syncService.pendingMutationsCount > 0 {
-                                        Text("\(syncService.pendingMutationsCount)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(Color.primary)
+                                        if syncService.pendingMutationsCount > 0 {
+                                            Text("\(syncService.pendingMutationsCount)")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(Color.primary)
+                                        }
                                     }
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(.ultraThinMaterial))
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.8))
                                 }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(.ultraThinMaterial))
-                                .overlay(Capsule().stroke(Color.white.opacity(0.3), lineWidth: 0.8))
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
 
                             // Botão Nova Transação Rápida
                             Button {

@@ -15,7 +15,7 @@ public final class CloudSyncService: ObservableObject {
     @AppStorage("cloud_sync_enabled") public var isEnabled: Bool = false {
         didSet {
             evaluateInitialStatus()
-            if isEnabled {
+            if isEnabled && (authService?.isAuthenticated ?? false) {
                 scheduleSync(delaySeconds: 0.5)
             }
         }
@@ -29,10 +29,26 @@ public final class CloudSyncService: ObservableObject {
     private var debounceTimer: AnyCancellable? = nil
     private let networkMonitor = NWPathMonitor()
     private var isNetworkAvailable: Bool = true
+    private var authCancellable: AnyCancellable? = nil
     public weak var store: FinancialDataStore?
+    public weak var authService: AuthService? {
+        didSet {
+            authCancellable = authService?.$isAuthenticated
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] isAuth in
+                    guard let self else { return }
+                    self.evaluateInitialStatus()
+                    if isAuth && self.isEnabled {
+                        self.scheduleSync(delaySeconds: 0.5)
+                    }
+                }
+            evaluateInitialStatus()
+        }
+    }
 
-    public init(store: FinancialDataStore? = nil) {
+    public init(store: FinancialDataStore? = nil, authService: AuthService? = nil) {
         self.store = store
+        self.authService = authService
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.outboxFileURL = docs.appendingPathComponent("sync_outbox_queue.json")
         loadOutboxQueue()
@@ -40,8 +56,8 @@ public final class CloudSyncService: ObservableObject {
         evaluateInitialStatus()
     }
 
-    private func evaluateInitialStatus() {
-        if !isEnabled {
+    public func evaluateInitialStatus() {
+        if !isEnabled || !(authService?.isAuthenticated ?? false) {
             syncStatus = .disabled
         } else if !outboxQueue.isEmpty {
             syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
@@ -57,9 +73,10 @@ public final class CloudSyncService: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.isNetworkAvailable = (path.status == .satisfied)
-                if self.isNetworkAvailable && self.isEnabled {
+                let isAuth = self.authService?.isAuthenticated ?? false
+                if self.isNetworkAvailable && self.isEnabled && isAuth {
                     self.scheduleSync(delaySeconds: 1.0)
-                } else if !self.isNetworkAvailable && self.isEnabled {
+                } else if !self.isNetworkAvailable && self.isEnabled && isAuth {
                     self.syncStatus = .outOfSync(
                         pendingCount: self.outboxQueue.count,
                         reason: "Sem conexão com a internet"
@@ -77,7 +94,7 @@ public final class CloudSyncService: ObservableObject {
         operation: SyncOperation,
         entity: T? = nil
     ) {
-        guard isEnabled else { return }
+        guard isEnabled, (authService?.isAuthenticated ?? false) else { return }
 
         let payloadJSON: String? = {
             guard let entity, operation == .upsert,
@@ -102,7 +119,8 @@ public final class CloudSyncService: ObservableObject {
     }
 
     public func scheduleSync(delaySeconds: Double) {
-        guard isEnabled, isNetworkAvailable else { return }
+        let isAuth = authService?.isAuthenticated ?? false
+        guard isEnabled, isNetworkAvailable, isAuth else { return }
         debounceTimer?.cancel()
         debounceTimer = Just(())
             .delay(for: .seconds(delaySeconds), scheduler: RunLoop.main)
@@ -112,7 +130,8 @@ public final class CloudSyncService: ObservableObject {
     }
 
     public func performSync() {
-        guard isEnabled else { syncStatus = .disabled; return }
+        let isAuth = authService?.isAuthenticated ?? false
+        guard isEnabled, isAuth else { syncStatus = .disabled; return }
         guard isNetworkAvailable else {
             syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sem internet")
             return
@@ -149,7 +168,8 @@ public final class CloudSyncService: ObservableObject {
         do {
             let response = try await BackendAPIClient.shared.pushPull(
                 baseURL: baseURLString,
-                requestPayload: payload
+                requestPayload: payload,
+                token: authService?.accessToken
             )
 
             let ackSet = Set(response.acknowledgedMutationIds)
@@ -170,6 +190,8 @@ public final class CloudSyncService: ObservableObject {
                 syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sincronizando lote seguinte...")
                 scheduleSync(delaySeconds: 0.5)
             }
+        } catch let err as URLError where err.code == .userAuthenticationRequired {
+            syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
         } catch {
             // Degradação suave: servidor fora do ar ou timeout não trava o app
             syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Servidor indisponível")
@@ -288,7 +310,6 @@ public final class CloudSyncService: ObservableObject {
         self.pendingMutationsCount = decoded.count
     }
 
-    /// Enfileira toda a base existente na outbox para sincronização com o backend (quando o usuário ativa a sincronização pela primeira vez)
     public func queueEntireDatabaseForUpload(store: FinancialDataStore) {
         for acc in store.accounts {
             recordLocalMutation(entityName: "bank_accounts", entityId: acc.id, operation: .upsert, entity: acc)

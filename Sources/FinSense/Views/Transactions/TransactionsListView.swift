@@ -14,23 +14,27 @@ public struct TransactionsListView: View {
     @ObservedObject var store: FinancialDataStore
     @ObservedObject var syncService: CloudSyncService
     @ObservedObject var aiService: CloudAIService
+    @ObservedObject var authService: AuthService
 
     @State private var selectedFilter: TransactionFilterTab = .all
     @State private var searchText: String = ""
     @State private var isAddSheetPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
     @State private var isCameraScannerPresented: Bool = false
+    @State private var isAuthSheetPresented: Bool = false
     @State private var parsedFromOCR: ParsedTransactionDTO? = nil
     @State private var isParsingReceiptAlert: Bool = false
 
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
-        aiService: CloudAIService
+        aiService: CloudAIService,
+        authService: AuthService
     ) {
         self.store = store
         self.syncService = syncService
         self.aiService = aiService
+        self.authService = authService
     }
 
     public var body: some View {
@@ -48,7 +52,11 @@ public struct TransactionsListView: View {
                         trailingIcon: "camera.viewfinder"
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        isCameraScannerPresented = true
+                        if authService.isAuthenticated {
+                            isCameraScannerPresented = true
+                        } else {
+                            isAuthSheetPresented = true
+                        }
                     }
 
                     // Pílulas Deslizantes de Filtro
@@ -249,13 +257,20 @@ public struct TransactionsListView: View {
             .sheet(item: $parsedFromOCR) { parsed in
                 TransactionDetailSheet(store: store, syncService: syncService, prefilledParsed: parsed)
             }
+            .sheet(isPresented: $isAuthSheetPresented) {
+                AuthSheetView(authService: authService, baseURL: syncService.baseURLString)
+            }
         }
     }
 
     private func processCapturedReceipt(_ image: UIImage) {
         Task {
             do {
-                let transactions = try await aiService.parseReceiptImage(image: image, baseURL: syncService.baseURLString)
+                let transactions = try await aiService.parseReceiptImage(
+                    image: image,
+                    baseURL: syncService.baseURLString,
+                    bearerToken: authService.accessToken
+                )
                 if let first = transactions.first {
                     parsedFromOCR = first
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
