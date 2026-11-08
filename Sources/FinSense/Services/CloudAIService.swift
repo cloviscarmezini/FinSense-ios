@@ -4,122 +4,25 @@ import UIKit
 
 @MainActor
 public final class CloudAIService: ObservableObject {
-    @Published public var availableModels: [BackendAIModelInfo] = []
-    @Published public var suggestedModels: [SuggestedBackendModel] = []
-    @Published public var activeModelId: String? = nil
-    @Published public var isDownloadingModel: Bool = false
-    @Published public var downloadProgress: Double = 0.0
-    @Published public var activeDownloadTask: AIDownloadTaskStatusResponse? = nil
     @Published public var isInferringChat: Bool = false
     @Published public var isParsingReceipt: Bool = false
     @Published public var errorMessage: String? = nil
 
     private let apiClient: BackendAPIClient
-    private var downloadPollingTask: Task<Void, Never>? = nil
 
     public init(apiClient: BackendAPIClient = .shared) {
         self.apiClient = apiClient
     }
 
-    // MARK: - 1. Listar Modelos do Backend
-    public func fetchModelsCatalog(baseURL: String) async {
-        do {
-            let res: AIModelsCatalogResponse = try await apiClient.get(endpoint: "\(baseURL)/ai/models")
-            self.availableModels = res.installedModels
-            self.suggestedModels = res.suggestedModels
-            self.activeModelId = res.selectedModelId
-            self.errorMessage = nil
-        } catch {
-            self.errorMessage = "Falha ao consultar modelos na nuvem: \(error.localizedDescription)"
-        }
-    }
-
-    // MARK: - 2. Iniciar Download de Modelo do Hugging Face no Servidor
-    public func startModelDownload(repoId: String, hfToken: String, baseURL: String) async {
-        isDownloadingModel = true
-        downloadProgress = 0.0
-
-        struct DownloadReq: Codable {
-            let repoId: String
-            let huggingFaceToken: String
-            enum CodingKeys: String, CodingKey {
-                case repoId = "repo_id"
-                case huggingFaceToken = "hugging_face_token"
-            }
-        }
-
-        struct DownloadRes: Codable {
-            let taskId: UUID
-            enum CodingKeys: String, CodingKey { case taskId = "task_id" }
-        }
-
-        do {
-            let res: DownloadRes = try await apiClient.post(
-                endpoint: "\(baseURL)/ai/models/download",
-                body: DownloadReq(repoId: repoId, huggingFaceToken: hfToken)
-            )
-            pollDownloadProgress(taskId: res.taskId, baseURL: baseURL)
-        } catch {
-            isDownloadingModel = false
-            errorMessage = "Erro ao solicitar download: \(error.localizedDescription)"
-        }
-    }
-
-    private func pollDownloadProgress(taskId: UUID, baseURL: String) {
-        downloadPollingTask?.cancel()
-        downloadPollingTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
-                guard let status: AIDownloadTaskStatusResponse = try? await apiClient.get(
-                    endpoint: "\(baseURL)/ai/models/download/\(taskId.uuidString)"
-                ) else { continue }
-
-                self.activeDownloadTask = status
-                self.downloadProgress = status.progressPercentage
-
-                if status.status == "READY" {
-                    self.isDownloadingModel = false
-                    await fetchModelsCatalog(baseURL: baseURL)
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    break
-                } else if status.status == "FAILED" || status.status == "CANCELED" {
-                    self.isDownloadingModel = false
-                    self.errorMessage = status.errorMessage ?? "Download interrompido."
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    break
-                }
-            }
-        }
-    }
-
-    // MARK: - 3. Selecionar Modelo Ativo na Nuvem
-    public func selectActiveModel(modelId: String, baseURL: String) async -> Bool {
-        struct SelectReq: Codable {
-            let modelId: String
-            enum CodingKeys: String, CodingKey { case modelId = "model_id" }
-        }
-
-        do {
-            let _: [String: AnyCodableValue] = try await apiClient.post(
-                endpoint: "\(baseURL)/ai/models/select",
-                body: SelectReq(modelId: modelId)
-            )
-            self.activeModelId = modelId
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            return true
-        } catch {
-            self.errorMessage = "Falha ao ativar modelo: \(error.localizedDescription)"
-            return false
-        }
-    }
-
-    // MARK: - 4. Streaming SSE de Chat com a IA
+    // MARK: - Streaming SSE de Chat com a IA (Usando modelo default da API)
     public func streamChatMessage(
         messages: [ChatMessage],
         baseURL: String,
+        bearerToken: String? = nil,
         onTokenReceived: @escaping (String) -> Void
     ) async throws -> String {
         isInferringChat = true
+        errorMessage = nil
         defer { isInferringChat = false }
 
         guard let url = URL(string: "\(baseURL)/ai/chat/completions") else {
@@ -130,7 +33,11 @@ public final class CloudAIService: ObservableObject {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if let token = bearerToken ?? apiClient.bearerToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
+        // Sem parâmetro de modelo: a API utiliza o modelo padrão configurado no servidor
         let payload: [String: Any] = [
             "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] },
             "temperature": 0.2,
@@ -139,7 +46,14 @@ public final class CloudAIService: ObservableObject {
         req.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (asyncBytes, response) = try await URLSession.shared.bytes(for: req)
-        guard let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard httpRes.statusCode == 200 else {
+            if httpRes.statusCode == 401 || httpRes.statusCode == 403 {
+                throw URLError(.userAuthenticationRequired)
+            }
             throw URLError(.badServerResponse)
         }
 
@@ -157,14 +71,30 @@ public final class CloudAIService: ObservableObject {
                     fullContent += chunk
                     onTokenReceived(chunk)
                 }
+            } else if !line.isEmpty {
+                // Caso a API retorne JSON completo em vez de SSE
+                if let jsonData = line.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                   let choices = json["choices"] as? [[String: Any]],
+                   let message = choices.first?["message"] as? [String: Any],
+                   let content = message["content"] as? String {
+                    fullContent = content
+                    onTokenReceived(content)
+                    break
+                }
             }
         }
         return fullContent
     }
 
-    // MARK: - 5. OCR Multimodal de Comprovantes com a Câmera
-    public func parseReceiptImage(image: UIImage, baseURL: String) async throws -> [ParsedTransactionDTO] {
+    // MARK: - OCR Multimodal de Comprovantes com a Câmera
+    public func parseReceiptImage(
+        image: UIImage,
+        baseURL: String,
+        bearerToken: String? = nil
+    ) async throws -> [ParsedTransactionDTO] {
         isParsingReceipt = true
+        errorMessage = nil
         defer { isParsingReceipt = false }
 
         guard let url = URL(string: "\(baseURL)/ai/parse-statement") else {
@@ -179,6 +109,9 @@ public final class CloudAIService: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = bearerToken ?? apiClient.bearerToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
@@ -189,7 +122,14 @@ public final class CloudAIService: ObservableObject {
         req.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 else {
+        guard let httpRes = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard httpRes.statusCode == 200 else {
+            if httpRes.statusCode == 401 || httpRes.statusCode == 403 {
+                throw URLError(.userAuthenticationRequired)
+            }
             throw URLError(.badServerResponse)
         }
 
