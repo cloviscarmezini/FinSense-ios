@@ -5,15 +5,21 @@ public struct SettingsMainView: View {
     @ObservedObject var store: FinancialDataStore
     @ObservedObject var syncService: CloudSyncService
     @ObservedObject var aiService: CloudAIService
+    @ObservedObject var authService: AuthService
+
+    @State private var isAuthSheetPresented: Bool = false
+    @State private var isLogoutConfirmationPresented: Bool = false
 
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
-        aiService: CloudAIService
+        aiService: CloudAIService,
+        authService: AuthService
     ) {
         self.store = store
         self.syncService = syncService
         self.aiService = aiService
+        self.authService = authService
     }
 
     public var body: some View {
@@ -30,77 +36,51 @@ public struct SettingsMainView: View {
                             subtitle: "Configurações e conectividade"
                         )
 
-                        // Sincronização em Nuvem
-                        NavigationLink {
-                            CloudSyncSettingsView(syncService: syncService, store: store)
-                        } label: {
-                            LiquidGlassCard(cornerRadius: 18, padding: 16) {
-                                HStack(spacing: 14) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(hex: "#0284C7").opacity(0.18))
-                                            .frame(width: 42, height: 42)
-                                        Image(systemName: "icloud.and.arrow.up.fill")
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundStyle(Color(hex: "#0284C7"))
+                        // MARK: - Seção de Conta / Autenticação
+                        if authService.isAuthenticated {
+                            authenticatedAccountCard
+                        } else {
+                            unauthenticatedAccountCard
+                        }
+
+                        // MARK: - Sincronização em Nuvem (Apenas visível se autenticado)
+                        if authService.isAuthenticated {
+                            NavigationLink {
+                                CloudSyncSettingsView(syncService: syncService, store: store)
+                            } label: {
+                                LiquidGlassCard(cornerRadius: 18, padding: 16) {
+                                    HStack(spacing: 14) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color(hex: "#0284C7").opacity(0.18))
+                                                .frame(width: 42, height: 42)
+                                            Image(systemName: "icloud.and.arrow.up.fill")
+                                                .font(.system(size: 18, weight: .bold))
+                                                .foregroundStyle(Color(hex: "#0284C7"))
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text("Sincronização em Nuvem")
+                                                .font(.system(size: 15, weight: .bold))
+                                                .foregroundStyle(Color.primary)
+                                            Text(syncService.isEnabled ? "Sincronização ativa • Two-Way Push/Pull" : "Desativada (100% Offline)")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(Color.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Color.secondary.opacity(0.7))
                                     }
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("Sincronização em Nuvem")
-                                            .font(.system(size: 15, weight: .bold))
-                                            .foregroundStyle(Color.primary)
-                                        Text(syncService.isEnabled ? "Sincronização ativa • Two-Way Push/Pull" : "Desativada (100% Offline)")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Color.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.secondary.opacity(0.7))
                                 }
                             }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 20)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 20)
 
-                        // Gestão de Modelos de IA Remota
-                        NavigationLink {
-                            RemoteAIManagementView(aiService: aiService, syncService: syncService)
-                        } label: {
-                            LiquidGlassCard(cornerRadius: 18, padding: 16) {
-                                HStack(spacing: 14) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color(hex: "#8B5CF6").opacity(0.18))
-                                            .frame(width: 42, height: 42)
-                                        Image(systemName: "cpu.fill")
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundStyle(Color(hex: "#8B5CF6"))
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        Text("Modelos de IA na Nuvem")
-                                            .font(.system(size: 15, weight: .bold))
-                                            .foregroundStyle(Color.primary)
-                                        Text("Download Hugging Face e seleção de LLMs")
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Color.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.secondary.opacity(0.7))
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 20)
-
-                        // Privacidade & Visual
+                        // MARK: - Privacidade & Visual
                         LiquidGlassCard(cornerRadius: 18, padding: 16) {
                             VStack(spacing: 12) {
                                 Toggle(isOn: $store.isHideBalancesEnabled) {
@@ -115,7 +95,7 @@ public struct SettingsMainView: View {
                         }
                         .padding(.horizontal, 20)
 
-                        // Informações do Aplicativo
+                        // MARK: - Informações do Aplicativo
                         LiquidGlassCard(cornerRadius: 18, padding: 16) {
                             VStack(spacing: 10) {
                                 HStack {
@@ -125,6 +105,18 @@ public struct SettingsMainView: View {
                                     Spacer()
                                     Text("1.0.0 (Build 1)")
                                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                }
+
+                                Divider().opacity(0.4)
+
+                                HStack {
+                                    Text("Status da Aplicação")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Text(authService.isAuthenticated ? "Nuvem & IA Ativos" : "100% Local (Offline)")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(authService.isAuthenticated ? Color(hex: "#10B981") : Color(hex: "#F59E0B"))
                                 }
 
                                 Divider().opacity(0.4)
@@ -157,6 +149,145 @@ public struct SettingsMainView: View {
                     }
                 }
             }
+            .sheet(isPresented: $isAuthSheetPresented) {
+                AuthSheetView(authService: authService, baseURL: syncService.baseURLString)
+            }
+            .confirmationDialog(
+                "Deseja realmente sair da sua conta?",
+                isPresented: $isLogoutConfirmationPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Encerrar Sessão", role: .destructive) {
+                    Task {
+                        await authService.logout(baseURL: syncService.baseURLString)
+                    }
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Ao desconectar, o acesso à IA será pausado e os dados permanecerão salvos localmente no seu dispositivo.")
+            }
+        }
+    }
+
+    // MARK: - Cartão para Usuário Não Autenticado
+    private var unauthenticatedAccountCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            isAuthSheetPresented = true
+        } label: {
+            LiquidGlassCard(cornerRadius: 18, padding: 16) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(LinearGradient(
+                                colors: [Color(hex: "#0284C7"), Color(hex: "#38BDF8")],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 46, height: 46)
+
+                        Image(systemName: "person.badge.key.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Entrar ou Criar Conta")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.primary)
+                        Text("Conecte sua conta para habilitar IA e Sincronização")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.secondary.opacity(0.7))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Cartão de Perfil Autenticado
+    private var authenticatedAccountCard: some View {
+        LiquidGlassCard(cornerRadius: 18, padding: 16) {
+            VStack(spacing: 14) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: "#10B981").opacity(0.18))
+                            .frame(width: 46, height: 46)
+
+                        Text(userInitials)
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color(hex: "#10B981"))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(authService.currentUser?.fullName ?? "Usuário FinSense")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.primary)
+
+                            HStack(spacing: 3) {
+                                Circle()
+                                    .fill(Color(hex: "#10B981"))
+                                    .frame(width: 6, height: 6)
+                                Text("Online")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color(hex: "#10B981").opacity(0.15)))
+                        }
+
+                        Text(authService.currentUser?.email ?? "")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.secondary)
+                    }
+
+                    Spacer()
+                }
+
+                Divider().opacity(0.4)
+
+                HStack {
+                    Button(role: .destructive) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        isLogoutConfirmationPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Encerrar Sessão")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(Color(hex: "#EF4444"))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var userInitials: String {
+        guard let name = authService.currentUser?.fullName, !name.isEmpty else {
+            return "FS"
+        }
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        } else {
+            return String(name.prefix(2)).uppercased()
         }
     }
 }

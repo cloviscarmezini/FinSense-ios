@@ -3,15 +3,18 @@ import SwiftUI
 
 public struct ContentView: View {
     @StateObject private var store = FinancialDataStore()
+    @StateObject private var authService: AuthService
     @StateObject private var syncService: CloudSyncService
     @StateObject private var aiService = CloudAIService()
     @State private var selectedTab: AppTab = .dashboard
 
     public init() {
         let s = FinancialDataStore()
-        let sync = CloudSyncService(store: s)
+        let auth = AuthService()
+        let sync = CloudSyncService(store: s, authService: auth)
         s.cloudSyncService = sync
         _store = StateObject(wrappedValue: s)
+        _authService = StateObject(wrappedValue: auth)
         _syncService = StateObject(wrappedValue: sync)
     }
 
@@ -21,15 +24,38 @@ public struct ContentView: View {
             Group {
                 switch selectedTab {
                 case .dashboard:
-                    DashboardView(store: store, syncService: syncService, selectedTab: $selectedTab)
+                    DashboardView(
+                        store: store,
+                        syncService: syncService,
+                        authService: authService,
+                        selectedTab: $selectedTab
+                    )
                 case .transactions:
-                    TransactionsListView(store: store, syncService: syncService, aiService: aiService)
+                    TransactionsListView(
+                        store: store,
+                        syncService: syncService,
+                        aiService: aiService,
+                        authService: authService
+                    )
                 case .financeHub:
-                    FinanceHubMainView(store: store, syncService: syncService)
+                    FinanceHubMainView(
+                        store: store,
+                        syncService: syncService
+                    )
                 case .aiChat:
-                    AIChatMainView(store: store, syncService: syncService, aiService: aiService)
+                    AIChatMainView(
+                        store: store,
+                        syncService: syncService,
+                        aiService: aiService,
+                        authService: authService
+                    )
                 case .settings:
-                    SettingsMainView(store: store, syncService: syncService, aiService: aiService)
+                    SettingsMainView(
+                        store: store,
+                        syncService: syncService,
+                        aiService: aiService,
+                        authService: authService
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -41,6 +67,7 @@ public struct ContentView: View {
         .onAppear {
             store.cloudSyncService = syncService
             syncService.store = store
+            syncService.authService = authService
         }
     }
 }
