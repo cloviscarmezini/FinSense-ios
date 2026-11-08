@@ -42,7 +42,9 @@ if [ -d "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets" ]; then
         --app-icon AppIcon \
         --output-partial-info-plist "/tmp/actool_partial.plist" >> "$LOG_FILE" 2>&1 || true
 
-    if [ -f "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png" ]; then
+    if [ -f "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/icon-60@3x.png" ]; then
+        cp "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/icon-60@3x.png" "$APP_BUNDLE_DIR/AppIcon60x60@3x.png"
+    elif [ -f "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png" ]; then
         cp "$PROJECT_ROOT/Sources/FinSense/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png" "$APP_BUNDLE_DIR/AppIcon60x60@3x.png"
     fi
 fi
