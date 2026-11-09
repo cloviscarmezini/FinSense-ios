@@ -168,7 +168,7 @@ public struct TransactionDetailSheet: View {
                     selectedCategoryId = firstCat.id
                 }
             }
-            .onChange(of: type) { newType in
+            .onChange(of: type) { _, newType in
                 if store.categories.first(where: { $0.id == selectedCategoryId })?.type != newType,
                    let firstCat = store.categories.first(where: { $0.type == newType }) {
                     selectedCategoryId = firstCat.id
