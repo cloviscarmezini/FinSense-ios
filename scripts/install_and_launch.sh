@@ -109,13 +109,37 @@ fi
 
 # 5. Code signing
 SIGN_IDENTITY=""
+PROVISIONING_PROFILE=""
+ENTITLEMENTS_FILE="/tmp/finsense_entitlements.plist"
+rm -f "$ENTITLEMENTS_FILE"
+
 if [ "$IS_PHYSICAL" = "1" ]; then
     SIGN_IDENTITY=$(security find-identity -p codesigning -v 2>/dev/null | grep -E "Apple Development|iPhone Developer" | head -n 1 | awk -F'"' '{print $2}' || true)
+    
+    # Locate matching provisioning profile if available
+    for prof in "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision; do
+        if [ -f "$prof" ]; then
+            if security cms -D -i "$prof" 2>/dev/null | grep -qE "br\.com\.finsense\.ios|\*"; then
+                PROVISIONING_PROFILE="$prof"
+                break
+            fi
+        fi
+    done
+
+    if [ -n "$PROVISIONING_PROFILE" ]; then
+        echo "Found Provisioning Profile: $PROVISIONING_PROFILE" >> "$LOG_FILE"
+        cp "$PROVISIONING_PROFILE" "$APP_BUNDLE_DIR/embedded.mobileprovision"
+        security cms -D -i "$PROVISIONING_PROFILE" 2>/dev/null | plutil -extract Entitlements xml1 -o "$ENTITLEMENTS_FILE" - 2>/dev/null || true
+    fi
 fi
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "Signing with identity: $SIGN_IDENTITY" >> "$LOG_FILE"
-    codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1 || true
+    if [ -f "$ENTITLEMENTS_FILE" ]; then
+        codesign --force --sign "$SIGN_IDENTITY" --entitlements "$ENTITLEMENTS_FILE" --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1 || true
+    else
+        codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1 || true
+    fi
 else
     echo "Signing ad-hoc (-)" >> "$LOG_FILE"
     codesign --force --sign - --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1 || true
@@ -140,12 +164,21 @@ if [ "$IS_PHYSICAL" = "1" ]; then
     INSTALL_EXIT=$?
     echo "$INSTALL_OUTPUT" >> "$LOG_FILE"
 
-    if echo "$INSTALL_OUTPUT" | grep -qi "developer mode"; then
-        echo "WARNING: Developer Mode is disabled on the physical device." >> "$LOG_FILE"
-        osascript -e 'display notification "Ative o Modo de Desenvolvedor no iPhone (Ajustes > Privacidade e Segurança) para instalar o FinSense." with title "FinSense - Modo Desenvolvedor"' 2>/dev/null || true
-    elif echo "$INSTALL_OUTPUT" | grep -qi "device was still locked"; then
-        echo "WARNING: Physical device is locked. Please unlock the device." >> "$LOG_FILE"
-        osascript -e 'display notification "Desbloqueie o iPhone para instalar e abrir o FinSense." with title "FinSense"' 2>/dev/null || true
+    if [ $INSTALL_EXIT -ne 0 ]; then
+        if echo "$INSTALL_OUTPUT" | grep -qiE "0xe8008014|ApplicationVerificationFailed|invalid signature|integrity could not be verified"; then
+            echo "ERROR: Code signature verification rejected by iOS (0xe8008014)." >> "$LOG_FILE"
+            osascript -e 'display alert "FinSense: Assinatura Rejeitada pelo iPhone" message "O iOS desinstalou o FinSense imediatamente após o envio (Erro 0xe8008014: ApplicationVerificationFailed).\n\nDispositivos físicos da Apple não aceitam assinatura ad-hoc.\n\nPara rodar no seu iPhone:\n1. Abra o FinSense.xcodeproj no Xcode\n2. Vá em Signing & Capabilities e selecione sua Team (Apple ID)\n3. Execute o app diretamente pelo Xcode (Cmd+R)." as critical' 2>/dev/null || true
+        elif echo "$INSTALL_OUTPUT" | grep -qi "developer mode"; then
+            echo "WARNING: Developer Mode is disabled on the physical device." >> "$LOG_FILE"
+            osascript -e 'display alert "FinSense: Modo Desenvolvedor Desativado" message "Ative o Modo de Desenvolvedor no iPhone em Ajustes > Privacidade e Segurança > Modo de Desenvolvedor, e reinicie o aparelho." as critical' 2>/dev/null || true
+        elif echo "$INSTALL_OUTPUT" | grep -qi "device was still locked"; then
+            echo "WARNING: Physical device is locked. Please unlock the device." >> "$LOG_FILE"
+            osascript -e 'display alert "FinSense: iPhone Bloqueado" message "Desbloqueie a tela do seu iPhone para permitir a instalação do app." as warning' 2>/dev/null || true
+        else
+            echo "ERROR: Physical device installation failed." >> "$LOG_FILE"
+            osascript -e 'display alert "FinSense: Falha na Instalação" message "Ocorreu um erro ao instalar o app no iPhone. Verifique os logs em /tmp/finsense_install.log." as warning' 2>/dev/null || true
+        fi
+        exit $INSTALL_EXIT
     fi
 
     echo "Launching br.com.finsense.ios on physical device: $DEVICE_ID..." >> "$LOG_FILE"
