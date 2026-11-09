@@ -63,12 +63,21 @@ public struct FinanceHubMainView: View {
                             }
 
                             HubNavigationCard(
-                                title: "Financiamentos & Empréstimos",
-                                subtitle: "\(store.contracts.count) contratos ativos • SAC / PRICE",
+                                title: "Empréstimos",
+                                subtitle: "\(store.contracts.filter { $0.kind == .loan }.count) ativos • Consignado e Pessoal",
+                                iconSymbol: "banknote.fill",
+                                iconColor: "#10B981"
+                            ) {
+                                CreditContractsView(store: store, kind: .loan)
+                            }
+
+                            HubNavigationCard(
+                                title: "Financiamentos",
+                                subtitle: "\(store.contracts.filter { $0.kind == .financing }.count) ativos • Imóvel e Carro (SAC/PRICE)",
                                 iconSymbol: "house.and.flag.fill",
                                 iconColor: "#F59E0B"
                             ) {
-                                CreditContractsView(store: store)
+                                CreditContractsView(store: store, kind: .financing)
                             }
 
                             HubNavigationCard(

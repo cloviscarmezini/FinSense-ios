@@ -3,11 +3,48 @@ import SwiftUI
 
 public struct CreditContractsView: View {
     @ObservedObject var store: FinancialDataStore
+    public let kind: CreditContractKind?
     @State private var isAddContractPresented: Bool = false
     @State private var simulatingContract: CreditContract? = nil
 
-    public init(store: FinancialDataStore) {
+    public init(store: FinancialDataStore, kind: CreditContractKind? = nil) {
         self.store = store
+        self.kind = kind
+    }
+
+    private var displayedContracts: [CreditContract] {
+        if let kind {
+            return store.contracts.filter { $0.kind == kind }
+        }
+        return store.contracts
+    }
+
+    private var viewTitle: String {
+        switch kind {
+        case .loan: return "Empréstimos"
+        case .financing: return "Financiamentos"
+        case nil: return "Financiamentos & Empréstimos"
+        }
+    }
+
+    private var emptyIcon: String {
+        kind == .loan ? "banknote.fill" : "house.and.flag.fill"
+    }
+
+    private var emptyTitle: String {
+        switch kind {
+        case .loan: return "Nenhum empréstimo cadastrado"
+        case .financing: return "Nenhum financiamento cadastrado"
+        case nil: return "Nenhum contrato cadastrado"
+        }
+    }
+
+    private var emptySubtitle: String {
+        switch kind {
+        case .loan: return "Cadastre seu empréstimo consignado, pessoal ou outros."
+        case .financing: return "Cadastre seu financiamento imobiliário ou veicular."
+        case nil: return "Cadastre seu financiamento imobiliário, veicular ou consignado."
+        }
     }
 
     public var body: some View {
@@ -17,31 +54,31 @@ public struct CreditContractsView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
-                    if store.contracts.isEmpty {
+                    if displayedContracts.isEmpty {
                         VStack(spacing: 8) {
-                            Image(systemName: "house.and.flag.fill")
+                            Image(systemName: emptyIcon)
                                 .font(.system(size: 38))
                                 .foregroundStyle(Color.secondary.opacity(0.5))
-                            Text("Nenhum contrato cadastrado")
+                            Text(emptyTitle)
                                 .font(.system(size: 15, weight: .bold))
-                            Text("Cadastre seu financiamento imobiliário, veicular ou consignado.")
+                            Text(emptySubtitle)
                                 .font(.system(size: 12))
                                 .foregroundStyle(Color.secondary)
                         }
                         .padding(.top, 40)
                     } else {
                         VStack(spacing: 14) {
-                            ForEach(store.contracts) { contract in
+                            ForEach(displayedContracts) { contract in
                                 LiquidGlassCard(cornerRadius: 20, padding: 16) {
                                     VStack(alignment: .leading, spacing: 12) {
                                         HStack {
                                             ZStack {
                                                 Circle()
-                                                    .fill(Color(hex: "#0284C7").opacity(0.18))
+                                                    .fill(Color(hex: contract.kind == .loan ? "#10B981" : "#F59E0B").opacity(0.18))
                                                     .frame(width: 40, height: 40)
                                                 Image(systemName: contract.iconSymbol)
                                                     .font(.system(size: 16, weight: .bold))
-                                                    .foregroundStyle(Color(hex: "#0284C7"))
+                                                    .foregroundStyle(Color(hex: contract.kind == .loan ? "#10B981" : "#F59E0B"))
                                             }
 
                                             VStack(alignment: .leading, spacing: 2) {
@@ -132,7 +169,7 @@ public struct CreditContractsView: View {
                 }
             }
         }
-        .navigationTitle("Financiamentos")
+        .navigationTitle(viewTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
@@ -145,7 +182,7 @@ public struct CreditContractsView: View {
             }
         }
         .sheet(isPresented: $isAddContractPresented) {
-            ContractEditorSheet(store: store)
+            ContractEditorSheet(store: store, initialKind: kind ?? .financing)
         }
         .sheet(item: $simulatingContract) { contract in
             AmortizationSimulatorSheet(store: store, contract: contract)
@@ -157,7 +194,7 @@ public struct ContractEditorSheet: View {
     @ObservedObject var store: FinancialDataStore
     @Environment(\.dismiss) var dismiss
 
-    @State private var kind: CreditContractKind = .financing
+    @State private var kind: CreditContractKind
     @State private var name: String = ""
     @State private var totalAmountString: String = "0,00"
     @State private var installmentAmountString: String = "0,00"
@@ -167,6 +204,11 @@ public struct ContractEditorSheet: View {
     @State private var amortizationSystem: AmortizationSystem = .sac
     @State private var selectedAccountId: UUID = UUID()
     @State private var selectedCategoryId: UUID = UUID()
+
+    public init(store: FinancialDataStore, initialKind: CreditContractKind = .financing) {
+        self.store = store
+        _kind = State(initialValue: initialKind)
+    }
 
     public var body: some View {
         NavigationStack {

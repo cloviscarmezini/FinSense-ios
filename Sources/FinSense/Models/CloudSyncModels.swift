@@ -347,6 +347,17 @@ public struct SyncDeltasContainerDTO: Codable {
         try container.encodeIfPresent(categoryQuotaRules, forKey: .categoryQuotaRules)
         try container.encodeIfPresent(chatMessages, forKey: .chatMessages)
     }
+
+    public var isEmpty: Bool {
+        (bankAccounts?.isEmpty ?? true) &&
+        (categories?.isEmpty ?? true) &&
+        (financialTransactions?.isEmpty ?? true) &&
+        (investmentItems?.isEmpty ?? true) &&
+        (debtItems?.isEmpty ?? true) &&
+        (creditContracts?.isEmpty ?? true) &&
+        (categoryProvisions?.isEmpty ?? true) &&
+        (categoryQuotaRules?.isEmpty ?? true)
+    }
 }
 
 public enum AnyCodableValue: Codable, Hashable {

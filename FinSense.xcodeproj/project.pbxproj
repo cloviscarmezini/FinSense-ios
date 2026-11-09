@@ -7,103 +7,103 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FBED9FB27D8EC9D2B96B0ADF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26DA03695DCCB592F15FFE0A /* ContentView.swift */; };
-		C457776EF42E5678BF93A963 /* FinSenseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790868AF93D6A6CDF146C16A /* FinSenseApp.swift */; };
-		BE79437AF4CF3BA1608898BF /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */; };
-		CE06CA42C6B6AD3A0DF0C82B /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB84D2D4E6F771D157AAC6C9 /* Formatters.swift */; };
-		3C2D2CC9589837D009E52EFE /* LiquidGlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */; };
-		0BE5B25FD951D6726FA1DB4E /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D706EA70A131B4E958DE3EEE /* AuthModels.swift */; };
-		99B230C53F11A83BCD25DACA /* BankAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02F4B5A0BAE276087E64B7B /* BankAccount.swift */; };
-		84ACAC00E5D2357678B03203 /* CategoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792D986F0CAB488F349BC02A /* CategoryItem.swift */; };
-		6C9BE0694400F0DF65D164A3 /* CategoryProvision.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0854E8B93817E07FF5F792A /* CategoryProvision.swift */; };
-		9EA2921A326F5FFE616932EA /* CategoryQuotaRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */; };
-		E1B82E4B4D39E9D55166C19E /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625429127D85112D627147C3 /* ChatMessage.swift */; };
-		D08D1D3850F70C60C3EBCD40 /* CloudAIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */; };
-		1094F151AFA32F5D452A0033 /* CloudSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */; };
-		F59F24CCBB8DD9AF48419792 /* CreditContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F7123372F847592CC3D89F /* CreditContract.swift */; };
-		ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFF56CE24C24F4EF834B568 /* DebtItem.swift */; };
-		22ED9F1C1E93B5FCF0931D9A /* FinancialTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */; };
-		A0954C8456BA187663F16C3B /* InvestmentItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E555C62A51057845BD78FC9 /* InvestmentItem.swift */; };
-		DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504A34A7C94554496B28920A /* AppConfiguration.swift */; };
-		33000B8FCBBABB0A9C49783E /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDE11CB676FB07E6B9481F2E /* AuthService.swift */; };
-		78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B505548B0E26A710386FF84 /* BackendAPIClient.swift */; };
-		7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E23DF825DAB23CF714524C /* CloudAIService.swift */; };
-		343CF344E1F52080AEC9B5CE /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */; };
-		12C2C9D09D2E9505B9B4B6EB /* FinancialDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */; };
-		A0703A1713E7F6B5C2DCB7A6 /* AIChatMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */; };
-		3EEA5B7EE940806336E6DA48 /* AISuggestionPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */; };
-		811362DFEAD6D6BB3E191DAB /* AccountsCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */; };
-		9FCC3DBEAE3C78289852717D /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44B1641575E01E2D8C58CD /* DashboardView.swift */; };
 		02464C29ED59046CDAA9B00A /* FinancialHealthCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */; };
-		A4749470A8D7B39B0B10A469 /* MonthlyCashFlowCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772E46A90C2CCD0EB2203B5B /* MonthlyCashFlowCard.swift */; };
-		DCC746C42A9714A0A62CA948 /* AccountsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9788C933A8C9A77FA18FCB /* AccountsManagerView.swift */; };
-		815E9C815EF426743369DB1E /* CategoriesManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */; };
-		5B9AFE6155D72E2133DDB225 /* CategoryQuotasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */; };
-		2F9BF2741EDBB109B39A1750 /* CreditContractsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043607B6F5642D41587B79B5 /* CreditContractsView.swift */; };
-		2E0FF884813E2E223AC8533F /* DebtsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */; };
 		04514690D1BC66FF6E34CFBA /* FinanceHubMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */; };
-		CC07090C8DBC758FBBCC415D /* InvestmentsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */; };
-		4CF72B6C7D8E43621FB9D23E /* ProvisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */; };
-		9E21EAB628C837A8735ED137 /* LiquidNavigationBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */; };
-		583C45E64F9B7501DD79FC4E /* LiquidTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */; };
+		0BE5B25FD951D6726FA1DB4E /* AuthModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D706EA70A131B4E958DE3EEE /* AuthModels.swift */; };
+		1094F151AFA32F5D452A0033 /* CloudSyncModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */; };
+		12C2C9D09D2E9505B9B4B6EB /* FinancialDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */; };
+		22ED9F1C1E93B5FCF0931D9A /* FinancialTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */; };
 		2460B1116BF541731A0FE909 /* AuthSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D5125991385FDF761F49476 /* AuthSheetView.swift */; };
+		2E0FF884813E2E223AC8533F /* DebtsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */; };
+		2F9BF2741EDBB109B39A1750 /* CreditContractsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 043607B6F5642D41587B79B5 /* CreditContractsView.swift */; };
+		33000B8FCBBABB0A9C49783E /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDE11CB676FB07E6B9481F2E /* AuthService.swift */; };
+		343CF344E1F52080AEC9B5CE /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */; };
+		3805CF2164C6164D27130911 /* TransactionsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */; };
+		3C2D2CC9589837D009E52EFE /* LiquidGlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */; };
+		3EEA5B7EE940806336E6DA48 /* AISuggestionPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */; };
+		4CF72B6C7D8E43621FB9D23E /* ProvisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */; };
+		583C45E64F9B7501DD79FC4E /* LiquidTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */; };
+		5B9AFE6155D72E2133DDB225 /* CategoryQuotasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */; };
+		6C9BE0694400F0DF65D164A3 /* CategoryProvision.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0854E8B93817E07FF5F792A /* CategoryProvision.swift */; };
+		745F756BC1420593C3CF3825 /* TransactionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */; };
+		7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E23DF825DAB23CF714524C /* CloudAIService.swift */; };
+		78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B505548B0E26A710386FF84 /* BackendAPIClient.swift */; };
+		811362DFEAD6D6BB3E191DAB /* AccountsCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */; };
+		815E9C815EF426743369DB1E /* CategoriesManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */; };
+		84ACAC00E5D2357678B03203 /* CategoryItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792D986F0CAB488F349BC02A /* CategoryItem.swift */; };
 		87DA8F8FFBB938442AD0D0CA /* CloudSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */; };
 		8C68F4B7E4BE1192D22BCA00 /* SettingsMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498293DFE58F339A6802E3C /* SettingsMainView.swift */; };
+		99B230C53F11A83BCD25DACA /* BankAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02F4B5A0BAE276087E64B7B /* BankAccount.swift */; };
 		9D908231871339BA75ED4D2A /* ReceiptCameraScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */; };
-		745F756BC1420593C3CF3825 /* TransactionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */; };
-		3805CF2164C6164D27130911 /* TransactionsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */; };
+		9E21EAB628C837A8735ED137 /* LiquidNavigationBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */; };
+		9EA2921A326F5FFE616932EA /* CategoryQuotaRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */; };
+		9FCC3DBEAE3C78289852717D /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44B1641575E01E2D8C58CD /* DashboardView.swift */; };
+		A0703A1713E7F6B5C2DCB7A6 /* AIChatMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */; };
+		A0954C8456BA187663F16C3B /* InvestmentItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E555C62A51057845BD78FC9 /* InvestmentItem.swift */; };
+		A4749470A8D7B39B0B10A469 /* MonthlyCashFlowCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772E46A90C2CCD0EB2203B5B /* MonthlyCashFlowCard.swift */; };
+		BE79437AF4CF3BA1608898BF /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */; };
+		C457776EF42E5678BF93A963 /* FinSenseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790868AF93D6A6CDF146C16A /* FinSenseApp.swift */; };
+		CC07090C8DBC758FBBCC415D /* InvestmentsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */; };
+		CE06CA42C6B6AD3A0DF0C82B /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB84D2D4E6F771D157AAC6C9 /* Formatters.swift */; };
+		D08D1D3850F70C60C3EBCD40 /* CloudAIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */; };
+		DCC746C42A9714A0A62CA948 /* AccountsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9788C933A8C9A77FA18FCB /* AccountsManagerView.swift */; };
+		DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504A34A7C94554496B28920A /* AppConfiguration.swift */; };
+		E1B82E4B4D39E9D55166C19E /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625429127D85112D627147C3 /* ChatMessage.swift */; };
 		E94025ABA3E17383049BA7B2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B538383F92C4A61D1DDED1A9 /* Assets.xcassets */; };
+		ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFF56CE24C24F4EF834B568 /* DebtItem.swift */; };
+		F59F24CCBB8DD9AF48419792 /* CreditContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F7123372F847592CC3D89F /* CreditContract.swift */; };
+		FBED9FB27D8EC9D2B96B0ADF /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26DA03695DCCB592F15FFE0A /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		26DA03695DCCB592F15FFE0A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "Sources/FinSense/App/ContentView.swift"; sourceTree = "<group>"; };
-		790868AF93D6A6CDF146C16A /* FinSenseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinSenseApp.swift"; path = "Sources/FinSense/App/FinSenseApp.swift"; sourceTree = "<group>"; };
-		0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ColorTokens.swift"; path = "Sources/FinSense/DesignSystem/ColorTokens.swift"; sourceTree = "<group>"; };
-		AB84D2D4E6F771D157AAC6C9 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Formatters.swift"; path = "Sources/FinSense/DesignSystem/Formatters.swift"; sourceTree = "<group>"; };
-		A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiquidGlassModifiers.swift"; path = "Sources/FinSense/DesignSystem/LiquidGlassModifiers.swift"; sourceTree = "<group>"; };
-		D706EA70A131B4E958DE3EEE /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AuthModels.swift"; path = "Sources/FinSense/Models/AuthModels.swift"; sourceTree = "<group>"; };
-		D02F4B5A0BAE276087E64B7B /* BankAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BankAccount.swift"; path = "Sources/FinSense/Models/BankAccount.swift"; sourceTree = "<group>"; };
-		792D986F0CAB488F349BC02A /* CategoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CategoryItem.swift"; path = "Sources/FinSense/Models/CategoryItem.swift"; sourceTree = "<group>"; };
-		F0854E8B93817E07FF5F792A /* CategoryProvision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CategoryProvision.swift"; path = "Sources/FinSense/Models/CategoryProvision.swift"; sourceTree = "<group>"; };
-		7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CategoryQuotaRule.swift"; path = "Sources/FinSense/Models/CategoryQuotaRule.swift"; sourceTree = "<group>"; };
-		625429127D85112D627147C3 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatMessage.swift"; path = "Sources/FinSense/Models/ChatMessage.swift"; sourceTree = "<group>"; };
-		5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudAIModels.swift"; path = "Sources/FinSense/Models/CloudAIModels.swift"; sourceTree = "<group>"; };
-		7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudSyncModels.swift"; path = "Sources/FinSense/Models/CloudSyncModels.swift"; sourceTree = "<group>"; };
-		77F7123372F847592CC3D89F /* CreditContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CreditContract.swift"; path = "Sources/FinSense/Models/CreditContract.swift"; sourceTree = "<group>"; };
-		AEFF56CE24C24F4EF834B568 /* DebtItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DebtItem.swift"; path = "Sources/FinSense/Models/DebtItem.swift"; sourceTree = "<group>"; };
-		D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinancialTransaction.swift"; path = "Sources/FinSense/Models/FinancialTransaction.swift"; sourceTree = "<group>"; };
-		6E555C62A51057845BD78FC9 /* InvestmentItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "InvestmentItem.swift"; path = "Sources/FinSense/Models/InvestmentItem.swift"; sourceTree = "<group>"; };
-		504A34A7C94554496B28920A /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppConfiguration.swift"; path = "Sources/FinSense/Services/AppConfiguration.swift"; sourceTree = "<group>"; };
-		CDE11CB676FB07E6B9481F2E /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AuthService.swift"; path = "Sources/FinSense/Services/AuthService.swift"; sourceTree = "<group>"; };
-		8B505548B0E26A710386FF84 /* BackendAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BackendAPIClient.swift"; path = "Sources/FinSense/Services/BackendAPIClient.swift"; sourceTree = "<group>"; };
-		A0E23DF825DAB23CF714524C /* CloudAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudAIService.swift"; path = "Sources/FinSense/Services/CloudAIService.swift"; sourceTree = "<group>"; };
-		8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudSyncService.swift"; path = "Sources/FinSense/Services/CloudSyncService.swift"; sourceTree = "<group>"; };
-		96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinancialDataStore.swift"; path = "Sources/FinSense/Services/FinancialDataStore.swift"; sourceTree = "<group>"; };
-		2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AIChatMainView.swift"; path = "Sources/FinSense/Views/AIChat/AIChatMainView.swift"; sourceTree = "<group>"; };
-		F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AISuggestionPillView.swift"; path = "Sources/FinSense/Views/AIChat/AISuggestionPillView.swift"; sourceTree = "<group>"; };
-		A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AccountsCarouselView.swift"; path = "Sources/FinSense/Views/Dashboard/AccountsCarouselView.swift"; sourceTree = "<group>"; };
-		5C44B1641575E01E2D8C58CD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardView.swift"; path = "Sources/FinSense/Views/Dashboard/DashboardView.swift"; sourceTree = "<group>"; };
-		5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinancialHealthCard.swift"; path = "Sources/FinSense/Views/Dashboard/FinancialHealthCard.swift"; sourceTree = "<group>"; };
-		772E46A90C2CCD0EB2203B5B /* MonthlyCashFlowCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MonthlyCashFlowCard.swift"; path = "Sources/FinSense/Views/Dashboard/MonthlyCashFlowCard.swift"; sourceTree = "<group>"; };
-		DC9788C933A8C9A77FA18FCB /* AccountsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AccountsManagerView.swift"; path = "Sources/FinSense/Views/FinanceHub/AccountsManagerView.swift"; sourceTree = "<group>"; };
-		D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CategoriesManagerView.swift"; path = "Sources/FinSense/Views/FinanceHub/CategoriesManagerView.swift"; sourceTree = "<group>"; };
-		0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CategoryQuotasView.swift"; path = "Sources/FinSense/Views/FinanceHub/CategoryQuotasView.swift"; sourceTree = "<group>"; };
-		043607B6F5642D41587B79B5 /* CreditContractsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CreditContractsView.swift"; path = "Sources/FinSense/Views/FinanceHub/CreditContractsView.swift"; sourceTree = "<group>"; };
-		5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DebtsManagerView.swift"; path = "Sources/FinSense/Views/FinanceHub/DebtsManagerView.swift"; sourceTree = "<group>"; };
-		A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinanceHubMainView.swift"; path = "Sources/FinSense/Views/FinanceHub/FinanceHubMainView.swift"; sourceTree = "<group>"; };
-		303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "InvestmentsManagerView.swift"; path = "Sources/FinSense/Views/FinanceHub/InvestmentsManagerView.swift"; sourceTree = "<group>"; };
-		959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProvisionsView.swift"; path = "Sources/FinSense/Views/FinanceHub/ProvisionsView.swift"; sourceTree = "<group>"; };
-		B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiquidNavigationBar.swift"; path = "Sources/FinSense/Views/Navigation/LiquidNavigationBar.swift"; sourceTree = "<group>"; };
-		1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiquidTabBar.swift"; path = "Sources/FinSense/Views/Navigation/LiquidTabBar.swift"; sourceTree = "<group>"; };
-		6D5125991385FDF761F49476 /* AuthSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AuthSheetView.swift"; path = "Sources/FinSense/Views/Settings/AuthSheetView.swift"; sourceTree = "<group>"; };
-		204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudSyncSettingsView.swift"; path = "Sources/FinSense/Views/Settings/CloudSyncSettingsView.swift"; sourceTree = "<group>"; };
-		3498293DFE58F339A6802E3C /* SettingsMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SettingsMainView.swift"; path = "Sources/FinSense/Views/Settings/SettingsMainView.swift"; sourceTree = "<group>"; };
-		0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ReceiptCameraScannerView.swift"; path = "Sources/FinSense/Views/Transactions/ReceiptCameraScannerView.swift"; sourceTree = "<group>"; };
-		E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TransactionDetailSheet.swift"; path = "Sources/FinSense/Views/Transactions/TransactionDetailSheet.swift"; sourceTree = "<group>"; };
-		E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TransactionsListView.swift"; path = "Sources/FinSense/Views/Transactions/TransactionsListView.swift"; sourceTree = "<group>"; };
-		B538383F92C4A61D1DDED1A9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = "Assets.xcassets"; path = "Sources/FinSense/Resources/Assets.xcassets"; sourceTree = "<group>"; };
-		BAD676C6E129A504558040AC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info.plist"; path = "Info.plist"; sourceTree = "<group>"; };
-		73AD16181FDDB7427288C6BD /* FinSense.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "FinSense.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		043607B6F5642D41587B79B5 /* CreditContractsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditContractsView.swift; path = Sources/FinSense/Views/FinanceHub/CreditContractsView.swift; sourceTree = "<group>"; };
+		0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryQuotasView.swift; path = Sources/FinSense/Views/FinanceHub/CategoryQuotasView.swift; sourceTree = "<group>"; };
+		0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorTokens.swift; path = Sources/FinSense/DesignSystem/ColorTokens.swift; sourceTree = "<group>"; };
+		0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReceiptCameraScannerView.swift; path = Sources/FinSense/Views/Transactions/ReceiptCameraScannerView.swift; sourceTree = "<group>"; };
+		1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidTabBar.swift; path = Sources/FinSense/Views/Navigation/LiquidTabBar.swift; sourceTree = "<group>"; };
+		204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncSettingsView.swift; path = Sources/FinSense/Views/Settings/CloudSyncSettingsView.swift; sourceTree = "<group>"; };
+		2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIChatMainView.swift; path = Sources/FinSense/Views/AIChat/AIChatMainView.swift; sourceTree = "<group>"; };
+		26DA03695DCCB592F15FFE0A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = Sources/FinSense/App/ContentView.swift; sourceTree = "<group>"; };
+		303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/InvestmentsManagerView.swift; sourceTree = "<group>"; };
+		3498293DFE58F339A6802E3C /* SettingsMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsMainView.swift; path = Sources/FinSense/Views/Settings/SettingsMainView.swift; sourceTree = "<group>"; };
+		504A34A7C94554496B28920A /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfiguration.swift; path = Sources/FinSense/Services/AppConfiguration.swift; sourceTree = "<group>"; };
+		5C44B1641575E01E2D8C58CD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DashboardView.swift; path = Sources/FinSense/Views/Dashboard/DashboardView.swift; sourceTree = "<group>"; };
+		5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebtsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/DebtsManagerView.swift; sourceTree = "<group>"; };
+		5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancialHealthCard.swift; path = Sources/FinSense/Views/Dashboard/FinancialHealthCard.swift; sourceTree = "<group>"; };
+		5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudAIModels.swift; path = Sources/FinSense/Models/CloudAIModels.swift; sourceTree = "<group>"; };
+		625429127D85112D627147C3 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatMessage.swift; path = Sources/FinSense/Models/ChatMessage.swift; sourceTree = "<group>"; };
+		6D5125991385FDF761F49476 /* AuthSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthSheetView.swift; path = Sources/FinSense/Views/Settings/AuthSheetView.swift; sourceTree = "<group>"; };
+		6E555C62A51057845BD78FC9 /* InvestmentItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentItem.swift; path = Sources/FinSense/Models/InvestmentItem.swift; sourceTree = "<group>"; };
+		7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncModels.swift; path = Sources/FinSense/Models/CloudSyncModels.swift; sourceTree = "<group>"; };
+		73AD16181FDDB7427288C6BD /* FinSense.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FinSense.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		772E46A90C2CCD0EB2203B5B /* MonthlyCashFlowCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MonthlyCashFlowCard.swift; path = Sources/FinSense/Views/Dashboard/MonthlyCashFlowCard.swift; sourceTree = "<group>"; };
+		77F7123372F847592CC3D89F /* CreditContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditContract.swift; path = Sources/FinSense/Models/CreditContract.swift; sourceTree = "<group>"; };
+		790868AF93D6A6CDF146C16A /* FinSenseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinSenseApp.swift; path = Sources/FinSense/App/FinSenseApp.swift; sourceTree = "<group>"; };
+		792D986F0CAB488F349BC02A /* CategoryItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryItem.swift; path = Sources/FinSense/Models/CategoryItem.swift; sourceTree = "<group>"; };
+		7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryQuotaRule.swift; path = Sources/FinSense/Models/CategoryQuotaRule.swift; sourceTree = "<group>"; };
+		8B505548B0E26A710386FF84 /* BackendAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendAPIClient.swift; path = Sources/FinSense/Services/BackendAPIClient.swift; sourceTree = "<group>"; };
+		8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncService.swift; path = Sources/FinSense/Services/CloudSyncService.swift; sourceTree = "<group>"; };
+		959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProvisionsView.swift; path = Sources/FinSense/Views/FinanceHub/ProvisionsView.swift; sourceTree = "<group>"; };
+		96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancialDataStore.swift; path = Sources/FinSense/Services/FinancialDataStore.swift; sourceTree = "<group>"; };
+		A0E23DF825DAB23CF714524C /* CloudAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudAIService.swift; path = Sources/FinSense/Services/CloudAIService.swift; sourceTree = "<group>"; };
+		A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountsCarouselView.swift; path = Sources/FinSense/Views/Dashboard/AccountsCarouselView.swift; sourceTree = "<group>"; };
+		A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinanceHubMainView.swift; path = Sources/FinSense/Views/FinanceHub/FinanceHubMainView.swift; sourceTree = "<group>"; };
+		A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidGlassModifiers.swift; path = Sources/FinSense/DesignSystem/LiquidGlassModifiers.swift; sourceTree = "<group>"; };
+		AB84D2D4E6F771D157AAC6C9 /* Formatters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Formatters.swift; path = Sources/FinSense/DesignSystem/Formatters.swift; sourceTree = "<group>"; };
+		AEFF56CE24C24F4EF834B568 /* DebtItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebtItem.swift; path = Sources/FinSense/Models/DebtItem.swift; sourceTree = "<group>"; };
+		B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidNavigationBar.swift; path = Sources/FinSense/Views/Navigation/LiquidNavigationBar.swift; sourceTree = "<group>"; };
+		B538383F92C4A61D1DDED1A9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Sources/FinSense/Resources/Assets.xcassets; sourceTree = "<group>"; };
+		BAD676C6E129A504558040AC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CDE11CB676FB07E6B9481F2E /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthService.swift; path = Sources/FinSense/Services/AuthService.swift; sourceTree = "<group>"; };
+		D02F4B5A0BAE276087E64B7B /* BankAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BankAccount.swift; path = Sources/FinSense/Models/BankAccount.swift; sourceTree = "<group>"; };
+		D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoriesManagerView.swift; path = Sources/FinSense/Views/FinanceHub/CategoriesManagerView.swift; sourceTree = "<group>"; };
+		D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancialTransaction.swift; path = Sources/FinSense/Models/FinancialTransaction.swift; sourceTree = "<group>"; };
+		D706EA70A131B4E958DE3EEE /* AuthModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthModels.swift; path = Sources/FinSense/Models/AuthModels.swift; sourceTree = "<group>"; };
+		DC9788C933A8C9A77FA18FCB /* AccountsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/AccountsManagerView.swift; sourceTree = "<group>"; };
+		E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionsListView.swift; path = Sources/FinSense/Views/Transactions/TransactionsListView.swift; sourceTree = "<group>"; };
+		E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionDetailSheet.swift; path = Sources/FinSense/Views/Transactions/TransactionDetailSheet.swift; sourceTree = "<group>"; };
+		F0854E8B93817E07FF5F792A /* CategoryProvision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryProvision.swift; path = Sources/FinSense/Models/CategoryProvision.swift; sourceTree = "<group>"; };
+		F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AISuggestionPillView.swift; path = Sources/FinSense/Views/AIChat/AISuggestionPillView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,6 +124,14 @@
 				BAD676C6E129A504558040AC /* Info.plist */,
 				B88D7E26791946AEFDCC8BB7 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		B88D7E26791946AEFDCC8BB7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				73AD16181FDDB7427288C6BD /* FinSense.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		E9AC4BD1540DF25F92F842D2 /* Sources */ = {
@@ -177,14 +185,6 @@
 				B538383F92C4A61D1DDED1A9 /* Assets.xcassets */,
 			);
 			name = Sources;
-			sourceTree = "<group>";
-		};
-		B88D7E26791946AEFDCC8BB7 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				73AD16181FDDB7427288C6BD /* FinSense.app */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -333,27 +333,6 @@
 			};
 			name = Debug;
 		};
-		F8C11F1832EF84A327194F08 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ENABLE_MODULES = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_NO_COMMON_BLOCKS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = "wholemodule";
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
 		BAF6A2D9E2DF7BB8DC3B2BCF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -362,6 +341,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 6LKSUF5VU2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -387,6 +367,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 6LKSUF5VU2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Info.plist;
@@ -404,23 +385,44 @@
 			};
 			name = Release;
 		};
+		F8C11F1832EF84A327194F08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C1B0D475F7746409ADBE8D6F /* Build configuration list for PBXProject "FinSense" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				56EA2DDD7EA6B62E92CB9329 /* Debug */,
-				F8C11F1832EF84A327194F08 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		8DC218CD826613AD2E353F27 /* Build configuration list for PBXNativeTarget "FinSense" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				BAF6A2D9E2DF7BB8DC3B2BCF /* Debug */,
 				C3348D6D1BB2E55F8B064448 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C1B0D475F7746409ADBE8D6F /* Build configuration list for PBXProject "FinSense" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				56EA2DDD7EA6B62E92CB9329 /* Debug */,
+				F8C11F1832EF84A327194F08 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
