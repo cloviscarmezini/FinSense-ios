@@ -214,8 +214,9 @@ public final class CloudSyncService: ObservableObject {
     private func executeSyncPushPull() async {
         guard let store else { isSyncing = false; return }
 
+        let isLocalEmpty = store.transactions.isEmpty && store.accounts.isEmpty && store.categories.isEmpty && store.contracts.isEmpty && store.investments.isEmpty && store.debts.isEmpty
         let effectiveSinceRevision: Int64
-        if store.transactions.isEmpty && store.accounts.isEmpty && store.categories.isEmpty {
+        if isLocalEmpty {
             effectiveSinceRevision = 0
         } else {
             effectiveSinceRevision = Int64(lastServerRevision)
