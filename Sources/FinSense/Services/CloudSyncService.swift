@@ -81,6 +81,14 @@ public final class CloudSyncService: ObservableObject {
         evaluateInitialStatus()
     }
 
+    public func resetCloudData(targets: [String]? = nil) async throws {
+        let token = authService?.accessToken ?? BackendAPIClient.shared.bearerToken
+        try await BackendAPIClient.shared.resetCloudData(baseURL: baseURLString, targets: targets, token: token)
+        await MainActor.run {
+            self.resetSyncState()
+        }
+    }
+
     private func enqueueMutation(_ mutation: LocalSyncMutation) {
         if let existingIndex = outboxQueue.firstIndex(where: { $0.entityName == mutation.entityName && $0.entityId == mutation.entityId }) {
             outboxQueue[existingIndex] = mutation

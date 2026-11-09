@@ -9,6 +9,7 @@ public struct SettingsMainView: View {
 
     @State private var isAuthSheetPresented: Bool = false
     @State private var isLogoutConfirmationPresented: Bool = false
+    @State private var isResetSheetPresented: Bool = false
 
     public init(
         store: FinancialDataStore,
@@ -95,6 +96,42 @@ public struct SettingsMainView: View {
                         }
                         .padding(.horizontal, 20)
 
+                        // MARK: - Gestão da Base de Dados (Recomeçar do Zero)
+                        LiquidGlassCard(cornerRadius: 18, padding: 16) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                isResetSheetPresented = true
+                            } label: {
+                                HStack(spacing: 14) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: "#EF4444").opacity(0.18))
+                                            .frame(width: 42, height: 42)
+                                        Image(systemName: "arrow.counterclockwise.circle.fill")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundStyle(Color(hex: "#EF4444"))
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Recomeçar do Zero")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundStyle(Color(hex: "#EF4444"))
+                                        Text("Limpar transações, contas e categorias")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Color.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.secondary.opacity(0.7))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 20)
+
                         // MARK: - Informações do Aplicativo
                         LiquidGlassCard(cornerRadius: 18, padding: 16) {
                             VStack(spacing: 10) {
@@ -153,6 +190,9 @@ public struct SettingsMainView: View {
                 AuthSheetView(authService: authService, baseURL: syncService.baseURLString) {
                     syncService.performSync()
                 }
+            }
+            .sheet(isPresented: $isResetSheetPresented) {
+                ResetFromScratchIOSSheet(store: store, syncService: syncService, authService: authService)
             }
             .confirmationDialog(
                 "Deseja realmente sair da sua conta?",
@@ -290,6 +330,120 @@ public struct SettingsMainView: View {
             return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
         } else {
             return String(name.prefix(2)).uppercased()
+        }
+    }
+}
+
+// MARK: - Sheet: Recomeçar do Zero no iOS
+struct ResetFromScratchIOSSheet: View {
+    @ObservedObject var store: FinancialDataStore
+    @ObservedObject var syncService: CloudSyncService
+    @ObservedObject var authService: AuthService
+    @Environment(\.dismiss) var dismiss
+
+    @State private var resetCloudData: Bool = false
+    @State private var isResetting: Bool = false
+    @State private var errorMessage: String? = nil
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(Color(hex: "#EF4444"))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Atenção")
+                                    .font(.headline)
+                                Text("Esta ação limpará os dados da sua base no dispositivo.")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Opções") {
+                    Toggle(isOn: $resetCloudData) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Zerar dados na nuvem também")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(resetCloudData ? Color(hex: "#EF4444") : Color.primary)
+                            Text(authService.isAuthenticated
+                                ? "Remove os dados persistidos no servidor da sua conta conectada."
+                                : "Disponível apenas quando conectado a uma conta FinSense.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.secondary)
+                        }
+                    }
+                    .disabled(!authService.isAuthenticated || isResetting)
+                }
+
+                if let err = errorMessage {
+                    Section {
+                        Text(err)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.red)
+                    }
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        executeReset()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isResetting {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                            } else {
+                                Text(resetCloudData ? "Confirmar e Zerar Base Local e Nuvem" : "Confirmar e Recomeçar do Zero")
+                                    .font(.system(size: 15, weight: .bold))
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isResetting)
+                }
+            }
+            .navigationTitle("Recomeçar do Zero")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") {
+                        dismiss()
+                    }
+                    .disabled(isResetting)
+                }
+            }
+        }
+    }
+
+    private func executeReset() {
+        if resetCloudData && authService.isAuthenticated {
+            isResetting = true
+            errorMessage = nil
+            Task {
+                do {
+                    try await syncService.resetCloudData()
+                    await MainActor.run {
+                        store.resetAllData()
+                        isResetting = false
+                        dismiss()
+                    }
+                } catch {
+                    await MainActor.run {
+                        isResetting = false
+                        errorMessage = "Falha ao zerar dados na nuvem: \(error.localizedDescription)"
+                    }
+                }
+            }
+        } else {
+            store.resetAllData()
+            dismiss()
         }
     }
 }
