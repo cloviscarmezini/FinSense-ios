@@ -201,11 +201,18 @@ public final class CloudSyncService: ObservableObject {
     private func executeSyncPushPull() async {
         guard let store else { isSyncing = false; return }
 
+        let effectiveSinceRevision: Int64
+        if store.transactions.isEmpty && store.accounts.isEmpty && store.categories.isEmpty {
+            effectiveSinceRevision = 0
+        } else {
+            effectiveSinceRevision = Int64(lastServerRevision)
+        }
+
         let batchToSend = Array(outboxQueue.prefix(250))
         let payload = SyncPushPullRequest(
             clientId: clientId,
-            sinceRevision: Int64(lastServerRevision),
-            clientLastSyncRevision: Int64(lastServerRevision),
+            sinceRevision: effectiveSinceRevision,
+            clientLastSyncRevision: effectiveSinceRevision,
             mutations: batchToSend.map { mut in
                 SyncMutationDTO(
                     mutationId: mut.id,
