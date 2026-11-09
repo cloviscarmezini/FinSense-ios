@@ -20,7 +20,7 @@ public final class CloudSyncService: ObservableObject {
             }
         }
     }
-    @AppStorage("cloud_sync_base_url") public var baseURLString: String = "http://localhost:8080/api/v1"
+    @AppStorage("cloud_sync_base_url") public var baseURLString: String = AppConfiguration.shared.apiBaseURL
     @AppStorage("cloud_sync_client_id") public var clientId: String = UUID().uuidString
     @AppStorage("cloud_sync_last_revision") public var lastServerRevision: Int = 0
     @AppStorage("cloud_sync_last_user_id") public var lastSyncedUserId: String = ""
@@ -94,6 +94,11 @@ public final class CloudSyncService: ObservableObject {
         self.authService = authService
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.outboxFileURL = docs.appendingPathComponent("sync_outbox_queue.json")
+        
+        if let envBaseURL = ProcessInfo.processInfo.environment["API_BASE_URL"], !envBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            self.baseURLString = envBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
         loadOutboxQueue()
         startNetworkMonitoring()
         evaluateInitialStatus()

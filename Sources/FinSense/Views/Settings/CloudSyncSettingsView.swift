@@ -60,7 +60,12 @@ public struct CloudSyncSettingsView: View {
                     .autocapitalization(.none)
                     .keyboardType(.URL)
 
-                Button("Predefinir: Local (Simulador 8080)") {
+                Button("Predefinir: Servidor Mac Local (192.168.68.68:8080)") {
+                    syncService.baseURLString = "http://192.168.68.68:8080/api/v1"
+                }
+                .font(.system(size: 12))
+
+                Button("Predefinir: Localhost (Simulador 8080)") {
                     syncService.baseURLString = "http://localhost:8080/api/v1"
                 }
                 .font(.system(size: 12))

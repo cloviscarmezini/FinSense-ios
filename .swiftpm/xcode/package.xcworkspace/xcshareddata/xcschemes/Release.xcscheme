@@ -10,8 +10,8 @@
          <ExecutionAction
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
-               title = "Install and Launch on DeviceHub"
-               scriptText = "ROOT_DIR=&quot;${WORKSPACE_PATH%/.swiftpm*}&quot;&#10;if [ -z &quot;$ROOT_DIR&quot; ] || [ ! -f &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot; ]; then ROOT_DIR=&quot;$PWD&quot;; fi&#10;if [ ! -f &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot; ]; then ROOT_DIR=&quot;/Users/clovis/projetos/FinSense-ios&quot;; fi&#10;/bin/bash &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot;&#10;">
+               title = "Install and Launch Target Device"
+               scriptText = "ROOT_DIR=&quot;${WORKSPACE_PATH%/.swiftpm*}&quot;&#10;if [ -z &quot;$ROOT_DIR&quot; ] || [ ! -f &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot; ]; then ROOT_DIR=&quot;${PROJECT_DIR}&quot;; fi&#10;if [ -z &quot;$ROOT_DIR&quot; ] || [ ! -f &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot; ]; then ROOT_DIR=&quot;$PWD&quot;; fi&#10;if [ ! -f &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot; ]; then ROOT_DIR=&quot;/Users/clovis/projetos/FinSense-ios&quot;; fi&#10;/bin/bash &quot;$ROOT_DIR/scripts/install_and_launch.sh&quot;&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
@@ -40,7 +40,7 @@
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Release"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
@@ -58,7 +58,7 @@
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Release"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
@@ -68,6 +68,23 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       queueDebuggingEnabled = "No">
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "API_BASE_URL"
+            value = "https://api.finsense.com.br/v1"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "APP_ENVIRONMENT"
+            value = "production"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "ENABLE_VERBOSE_LOGGING"
+            value = "false"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -85,7 +102,7 @@
       </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "Debug">
+      buildConfiguration = "Release">
    </AnalyzeAction>
    <ArchiveAction
       buildConfiguration = "Release"

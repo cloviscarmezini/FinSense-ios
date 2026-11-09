@@ -24,6 +24,7 @@
 		ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFF56CE24C24F4EF834B568 /* DebtItem.swift */; };
 		22ED9F1C1E93B5FCF0931D9A /* FinancialTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */; };
 		A0954C8456BA187663F16C3B /* InvestmentItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E555C62A51057845BD78FC9 /* InvestmentItem.swift */; };
+		DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504A34A7C94554496B28920A /* AppConfiguration.swift */; };
 		33000B8FCBBABB0A9C49783E /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDE11CB676FB07E6B9481F2E /* AuthService.swift */; };
 		78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B505548B0E26A710386FF84 /* BackendAPIClient.swift */; };
 		7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E23DF825DAB23CF714524C /* CloudAIService.swift */; };
@@ -72,6 +73,7 @@
 		AEFF56CE24C24F4EF834B568 /* DebtItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DebtItem.swift"; path = "Sources/FinSense/Models/DebtItem.swift"; sourceTree = "<group>"; };
 		D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FinancialTransaction.swift"; path = "Sources/FinSense/Models/FinancialTransaction.swift"; sourceTree = "<group>"; };
 		6E555C62A51057845BD78FC9 /* InvestmentItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "InvestmentItem.swift"; path = "Sources/FinSense/Models/InvestmentItem.swift"; sourceTree = "<group>"; };
+		504A34A7C94554496B28920A /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppConfiguration.swift"; path = "Sources/FinSense/Services/AppConfiguration.swift"; sourceTree = "<group>"; };
 		CDE11CB676FB07E6B9481F2E /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AuthService.swift"; path = "Sources/FinSense/Services/AuthService.swift"; sourceTree = "<group>"; };
 		8B505548B0E26A710386FF84 /* BackendAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BackendAPIClient.swift"; path = "Sources/FinSense/Services/BackendAPIClient.swift"; sourceTree = "<group>"; };
 		A0E23DF825DAB23CF714524C /* CloudAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CloudAIService.swift"; path = "Sources/FinSense/Services/CloudAIService.swift"; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 				AEFF56CE24C24F4EF834B568 /* DebtItem.swift */,
 				D5F20D71D2B4FDB53E7E0D54 /* FinancialTransaction.swift */,
 				6E555C62A51057845BD78FC9 /* InvestmentItem.swift */,
+				504A34A7C94554496B28920A /* AppConfiguration.swift */,
 				CDE11CB676FB07E6B9481F2E /* AuthService.swift */,
 				8B505548B0E26A710386FF84 /* BackendAPIClient.swift */,
 				A0E23DF825DAB23CF714524C /* CloudAIService.swift */,
@@ -270,6 +273,7 @@
 				ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */,
 				22ED9F1C1E93B5FCF0931D9A /* FinancialTransaction.swift in Sources */,
 				A0954C8456BA187663F16C3B /* InvestmentItem.swift in Sources */,
+				DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */,
 				33000B8FCBBABB0A9C49783E /* AuthService.swift in Sources */,
 				78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */,
 				7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */,
