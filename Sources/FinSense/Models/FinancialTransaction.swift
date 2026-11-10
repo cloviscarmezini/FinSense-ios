@@ -62,6 +62,53 @@ public enum RecurrenceFrequency: String, Codable, CaseIterable, Identifiable, Ha
         case .annual: return "Anual"
         }
     }
+
+    public var defaultInitialHorizonCount: Int {
+        switch self {
+        case .weekly: return 104
+        case .biweekly: return 78
+        case .monthly: return 60
+        case .bimonthly: return 36
+        case .quarterly: return 28
+        case .semiannual: return 20
+        case .annual: return 15
+        }
+    }
+
+    public func nextDate(from baseDate: Date, occurrenceIndex: Int, calendar: Calendar = .current) -> Date {
+        guard occurrenceIndex > 0 else { return baseDate }
+        switch self {
+        case .weekly:
+            return calendar.date(byAdding: .day, value: 7 * occurrenceIndex, to: baseDate) ?? baseDate
+        case .biweekly:
+            return calendar.date(byAdding: .day, value: 14 * occurrenceIndex, to: baseDate) ?? baseDate
+        case .monthly:
+            return calendar.date(byAdding: .month, value: occurrenceIndex, to: baseDate) ?? baseDate
+        case .bimonthly:
+            return calendar.date(byAdding: .month, value: 2 * occurrenceIndex, to: baseDate) ?? baseDate
+        case .quarterly:
+            return calendar.date(byAdding: .month, value: 3 * occurrenceIndex, to: baseDate) ?? baseDate
+        case .semiannual:
+            return calendar.date(byAdding: .month, value: 6 * occurrenceIndex, to: baseDate) ?? baseDate
+        case .annual:
+            return calendar.date(byAdding: .year, value: occurrenceIndex, to: baseDate) ?? baseDate
+        }
+    }
+}
+
+/// Identifica a origem relacional e de domínio de uma transação financeira para permitir rollback e reversão de estado.
+public enum TransactionOrigin: String, Codable, CaseIterable, Identifiable, Hashable {
+    case standard
+    case financingAmortization
+    case loanAmortization
+    case loanPayoff
+    case contractSettlement
+    case investmentDeposit
+    case investmentRedemption
+    case debtPayment
+    case quotaAllocation
+
+    public var id: String { rawValue }
 }
 
 public struct FinancialTransaction: Identifiable, Codable, Hashable {
@@ -91,6 +138,8 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
     public var linkedQuotaId: UUID?
     public var linkedQuotaUnits: Int?
     public var linkedQuotaYearMonthKey: Int?
+    public var transactionOrigin: TransactionOrigin?
+    public var linkedEntityID: UUID?
     public var createdAt: Date
 
     public init(
@@ -120,6 +169,8 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         linkedQuotaId: UUID? = nil,
         linkedQuotaUnits: Int? = nil,
         linkedQuotaYearMonthKey: Int? = nil,
+        transactionOrigin: TransactionOrigin? = nil,
+        linkedEntityID: UUID? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -148,7 +199,33 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         self.linkedQuotaId = linkedQuotaId
         self.linkedQuotaUnits = linkedQuotaUnits
         self.linkedQuotaYearMonthKey = linkedQuotaYearMonthKey
+        self.transactionOrigin = transactionOrigin
+        self.linkedEntityID = linkedEntityID ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
         self.createdAt = createdAt
+    }
+
+    /// Origem relacional efetiva da transação (explícita ou inferida dos vínculos de domínio)
+    public var effectiveOrigin: TransactionOrigin {
+        if let explicit = transactionOrigin { return explicit }
+        if linkedDebtId != nil { return .debtPayment }
+        if linkedInvestmentId != nil {
+            return type == .income ? .investmentRedemption : .investmentDeposit
+        }
+        if linkedContractId != nil {
+            if installmentIndex == nil {
+                if name.localizedCaseInsensitiveContains("quitação") || name.localizedCaseInsensitiveContains("quitacao") {
+                    return .contractSettlement
+                }
+                return .financingAmortization
+            }
+        }
+        if linkedQuotaId != nil { return .quotaAllocation }
+        return .standard
+    }
+
+    /// ID da entidade financeira vinculada (Contrato, Investimento ou Dívida)
+    public var effectiveLinkedEntityID: UUID? {
+        linkedEntityID ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
     }
 
     public var signedAmount: Double {
@@ -171,10 +248,11 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, details, amount, date, type, isPaid, categoryId, accountId
-        case attachmentPath, attachmentName, ignoreInConsolidated, recurrenceMode, recurrenceFrequency
-        case isCanceledRecurringSeries, seriesGroupId, installmentIndex, installmentTotal
-        case rawStatementLine, statementOccurrenceIndex, linkedContractId, linkedInvestmentId
-        case linkedDebtId, linkedQuotaId, linkedQuotaUnits, linkedQuotaYearMonthKey, createdAt
+        case attachmentPath, attachmentName, ignoreInConsolidated, recurrenceMode
+        case recurrenceFrequency, isCanceledRecurringSeries, seriesGroupId
+        case installmentIndex, installmentTotal, rawStatementLine, statementOccurrenceIndex
+        case linkedContractId, linkedInvestmentId, linkedDebtId, linkedQuotaId
+        case linkedQuotaUnits, linkedQuotaYearMonthKey, transactionOrigin, linkedEntityID, createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -230,6 +308,11 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
             ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("linked_quota_units")))
         self.linkedQuotaYearMonthKey = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("linkedQuotaYearMonthKey")))
             ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("linked_quota_year_month_key")))
+        self.transactionOrigin = (try? c.decodeIfPresent(TransactionOrigin.self, forKey: AnyKey("transactionOrigin")))
+            ?? (try? c.decodeIfPresent(TransactionOrigin.self, forKey: AnyKey("transaction_origin")))
+        self.linkedEntityID = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linkedEntityID")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linked_entity_id")))
+            ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -262,6 +345,8 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(linkedQuotaId, forKey: .linkedQuotaId)
         try c.encodeIfPresent(linkedQuotaUnits, forKey: .linkedQuotaUnits)
         try c.encodeIfPresent(linkedQuotaYearMonthKey, forKey: .linkedQuotaYearMonthKey)
+        try c.encodeIfPresent(transactionOrigin, forKey: .transactionOrigin)
+        try c.encodeIfPresent(linkedEntityID, forKey: .linkedEntityID)
         try c.encode(createdAt, forKey: .createdAt)
     }
 }

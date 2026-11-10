@@ -40,6 +40,17 @@ public enum AppFormatters {
         return df
     }()
 
+    public static let dateTimeFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "pt_BR")
+        df.dateFormat = "dd/MM/yyyy 'às' HH:mm"
+        return df
+    }()
+
+    public static func dateTime(_ date: Date) -> String {
+        dateTimeFormatter.string(from: date)
+    }
+
     public static func currency(_ value: Double) -> String {
         let raw = currencyFormatter.string(from: NSNumber(value: value)) ?? String(format: "R$ %.2f", value)
         return raw.replacingOccurrences(of: "\u{00A0}", with: " ")
@@ -109,3 +120,6 @@ public enum AppFormatters {
         return String(digits.prefix(maxDigits))
     }
 }
+
+public typealias BRLFormatters = AppFormatters
+

@@ -20,13 +20,12 @@
 		343CF344E1F52080AEC9B5CE /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */; };
 		3805CF2164C6164D27130911 /* TransactionsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */; };
 		3C2D2CC9589837D009E52EFE /* LiquidGlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */; };
-		3EEA5B7EE940806336E6DA48 /* AISuggestionPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */; };
 		4CF72B6C7D8E43621FB9D23E /* ProvisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */; };
 		583C45E64F9B7501DD79FC4E /* LiquidTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */; };
 		5B9AFE6155D72E2133DDB225 /* CategoryQuotasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */; };
 		6C9BE0694400F0DF65D164A3 /* CategoryProvision.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0854E8B93817E07FF5F792A /* CategoryProvision.swift */; };
 		745F756BC1420593C3CF3825 /* TransactionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */; };
-		7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E23DF825DAB23CF714524C /* CloudAIService.swift */; };
+		7887C3587F5976E612FD100C /* LoanAmortizationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E23DF825DAB23CF714524C /* LoanAmortizationEngine.swift */; };
 		78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B505548B0E26A710386FF84 /* BackendAPIClient.swift */; };
 		811362DFEAD6D6BB3E191DAB /* AccountsCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */; };
 		815E9C815EF426743369DB1E /* CategoriesManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */; };
@@ -34,21 +33,20 @@
 		87DA8F8FFBB938442AD0D0CA /* CloudSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */; };
 		8C68F4B7E4BE1192D22BCA00 /* SettingsMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498293DFE58F339A6802E3C /* SettingsMainView.swift */; };
 		99B230C53F11A83BCD25DACA /* BankAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02F4B5A0BAE276087E64B7B /* BankAccount.swift */; };
-		9D908231871339BA75ED4D2A /* ReceiptCameraScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */; };
+		9D908231871339BA75ED4D2A /* AmortizationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC6F61AAB1C313408AD5B02 /* AmortizationEngine.swift */; };
 		9E21EAB628C837A8735ED137 /* LiquidNavigationBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */; };
 		9EA2921A326F5FFE616932EA /* CategoryQuotaRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */; };
 		9FCC3DBEAE3C78289852717D /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C44B1641575E01E2D8C58CD /* DashboardView.swift */; };
-		A0703A1713E7F6B5C2DCB7A6 /* AIChatMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */; };
 		A0954C8456BA187663F16C3B /* InvestmentItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E555C62A51057845BD78FC9 /* InvestmentItem.swift */; };
 		A4749470A8D7B39B0B10A469 /* MonthlyCashFlowCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772E46A90C2CCD0EB2203B5B /* MonthlyCashFlowCard.swift */; };
 		BE79437AF4CF3BA1608898BF /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */; };
 		C457776EF42E5678BF93A963 /* FinSenseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790868AF93D6A6CDF146C16A /* FinSenseApp.swift */; };
 		CC07090C8DBC758FBBCC415D /* InvestmentsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */; };
 		CE06CA42C6B6AD3A0DF0C82B /* Formatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB84D2D4E6F771D157AAC6C9 /* Formatters.swift */; };
-		D08D1D3850F70C60C3EBCD40 /* CloudAIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */; };
+		D08D1D3850F70C60C3EBCD40 /* FinancingModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F58D4E0BA5A5E22FEB39BA4 /* FinancingModel.swift */; };
 		DCC746C42A9714A0A62CA948 /* AccountsManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9788C933A8C9A77FA18FCB /* AccountsManagerView.swift */; };
 		DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504A34A7C94554496B28920A /* AppConfiguration.swift */; };
-		E1B82E4B4D39E9D55166C19E /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625429127D85112D627147C3 /* ChatMessage.swift */; };
+		E1B82E4B4D39E9D55166C19E /* LoanModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 625429127D85112D627147C3 /* LoanModel.swift */; };
 		E94025ABA3E17383049BA7B2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B538383F92C4A61D1DDED1A9 /* Assets.xcassets */; };
 		ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFF56CE24C24F4EF834B568 /* DebtItem.swift */; };
 		F59F24CCBB8DD9AF48419792 /* CreditContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F7123372F847592CC3D89F /* CreditContract.swift */; };
@@ -59,10 +57,9 @@
 		043607B6F5642D41587B79B5 /* CreditContractsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditContractsView.swift; path = Sources/FinSense/Views/FinanceHub/CreditContractsView.swift; sourceTree = "<group>"; };
 		0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryQuotasView.swift; path = Sources/FinSense/Views/FinanceHub/CategoryQuotasView.swift; sourceTree = "<group>"; };
 		0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorTokens.swift; path = Sources/FinSense/DesignSystem/ColorTokens.swift; sourceTree = "<group>"; };
-		0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReceiptCameraScannerView.swift; path = Sources/FinSense/Views/Transactions/ReceiptCameraScannerView.swift; sourceTree = "<group>"; };
+		0FC6F61AAB1C313408AD5B02 /* AmortizationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AmortizationEngine.swift; path = Sources/FinSense/Services/AmortizationEngine.swift; sourceTree = "<group>"; };
 		1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidTabBar.swift; path = Sources/FinSense/Views/Navigation/LiquidTabBar.swift; sourceTree = "<group>"; };
 		204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncSettingsView.swift; path = Sources/FinSense/Views/Settings/CloudSyncSettingsView.swift; sourceTree = "<group>"; };
-		2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AIChatMainView.swift; path = Sources/FinSense/Views/AIChat/AIChatMainView.swift; sourceTree = "<group>"; };
 		26DA03695DCCB592F15FFE0A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContentView.swift; path = Sources/FinSense/App/ContentView.swift; sourceTree = "<group>"; };
 		303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/InvestmentsManagerView.swift; sourceTree = "<group>"; };
 		3498293DFE58F339A6802E3C /* SettingsMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsMainView.swift; path = Sources/FinSense/Views/Settings/SettingsMainView.swift; sourceTree = "<group>"; };
@@ -70,8 +67,8 @@
 		5C44B1641575E01E2D8C58CD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DashboardView.swift; path = Sources/FinSense/Views/Dashboard/DashboardView.swift; sourceTree = "<group>"; };
 		5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebtsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/DebtsManagerView.swift; sourceTree = "<group>"; };
 		5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancialHealthCard.swift; path = Sources/FinSense/Views/Dashboard/FinancialHealthCard.swift; sourceTree = "<group>"; };
-		5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudAIModels.swift; path = Sources/FinSense/Models/CloudAIModels.swift; sourceTree = "<group>"; };
-		625429127D85112D627147C3 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatMessage.swift; path = Sources/FinSense/Models/ChatMessage.swift; sourceTree = "<group>"; };
+		5F58D4E0BA5A5E22FEB39BA4 /* FinancingModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancingModel.swift; path = Sources/FinSense/Models/FinancingModel.swift; sourceTree = "<group>"; };
+		625429127D85112D627147C3 /* LoanModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoanModel.swift; path = Sources/FinSense/Models/LoanModel.swift; sourceTree = "<group>"; };
 		6D5125991385FDF761F49476 /* AuthSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AuthSheetView.swift; path = Sources/FinSense/Views/Settings/AuthSheetView.swift; sourceTree = "<group>"; };
 		6E555C62A51057845BD78FC9 /* InvestmentItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentItem.swift; path = Sources/FinSense/Models/InvestmentItem.swift; sourceTree = "<group>"; };
 		7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncModels.swift; path = Sources/FinSense/Models/CloudSyncModels.swift; sourceTree = "<group>"; };
@@ -85,7 +82,7 @@
 		8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudSyncService.swift; path = Sources/FinSense/Services/CloudSyncService.swift; sourceTree = "<group>"; };
 		959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProvisionsView.swift; path = Sources/FinSense/Views/FinanceHub/ProvisionsView.swift; sourceTree = "<group>"; };
 		96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinancialDataStore.swift; path = Sources/FinSense/Services/FinancialDataStore.swift; sourceTree = "<group>"; };
-		A0E23DF825DAB23CF714524C /* CloudAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CloudAIService.swift; path = Sources/FinSense/Services/CloudAIService.swift; sourceTree = "<group>"; };
+		A0E23DF825DAB23CF714524C /* LoanAmortizationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoanAmortizationEngine.swift; path = Sources/FinSense/Services/LoanAmortizationEngine.swift; sourceTree = "<group>"; };
 		A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountsCarouselView.swift; path = Sources/FinSense/Views/Dashboard/AccountsCarouselView.swift; sourceTree = "<group>"; };
 		A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FinanceHubMainView.swift; path = Sources/FinSense/Views/FinanceHub/FinanceHubMainView.swift; sourceTree = "<group>"; };
 		A6E32E6E27F6C692DA06FD3A /* LiquidGlassModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiquidGlassModifiers.swift; path = Sources/FinSense/DesignSystem/LiquidGlassModifiers.swift; sourceTree = "<group>"; };
@@ -103,7 +100,6 @@
 		E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionsListView.swift; path = Sources/FinSense/Views/Transactions/TransactionsListView.swift; sourceTree = "<group>"; };
 		E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TransactionDetailSheet.swift; path = Sources/FinSense/Views/Transactions/TransactionDetailSheet.swift; sourceTree = "<group>"; };
 		F0854E8B93817E07FF5F792A /* CategoryProvision.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryProvision.swift; path = Sources/FinSense/Models/CategoryProvision.swift; sourceTree = "<group>"; };
-		F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AISuggestionPillView.swift; path = Sources/FinSense/Views/AIChat/AISuggestionPillView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,8 +143,8 @@
 				792D986F0CAB488F349BC02A /* CategoryItem.swift */,
 				F0854E8B93817E07FF5F792A /* CategoryProvision.swift */,
 				7FB793194FC309C63752EF29 /* CategoryQuotaRule.swift */,
-				625429127D85112D627147C3 /* ChatMessage.swift */,
-				5F58D4E0BA5A5E22FEB39BA4 /* CloudAIModels.swift */,
+				625429127D85112D627147C3 /* LoanModel.swift */,
+				5F58D4E0BA5A5E22FEB39BA4 /* FinancingModel.swift */,
 				7069C3CF67CF72825ABDF3CF /* CloudSyncModels.swift */,
 				77F7123372F847592CC3D89F /* CreditContract.swift */,
 				AEFF56CE24C24F4EF834B568 /* DebtItem.swift */,
@@ -157,11 +153,9 @@
 				504A34A7C94554496B28920A /* AppConfiguration.swift */,
 				CDE11CB676FB07E6B9481F2E /* AuthService.swift */,
 				8B505548B0E26A710386FF84 /* BackendAPIClient.swift */,
-				A0E23DF825DAB23CF714524C /* CloudAIService.swift */,
+				A0E23DF825DAB23CF714524C /* LoanAmortizationEngine.swift */,
 				8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */,
 				96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */,
-				2687F8A274D07D92ACAF55F6 /* AIChatMainView.swift */,
-				F781D0F64006233AB9B8651B /* AISuggestionPillView.swift */,
 				A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */,
 				5C44B1641575E01E2D8C58CD /* DashboardView.swift */,
 				5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */,
@@ -179,7 +173,7 @@
 				6D5125991385FDF761F49476 /* AuthSheetView.swift */,
 				204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */,
 				3498293DFE58F339A6802E3C /* SettingsMainView.swift */,
-				0FC6F61AAB1C313408AD5B02 /* ReceiptCameraScannerView.swift */,
+				0FC6F61AAB1C313408AD5B02 /* AmortizationEngine.swift */,
 				E9922B17AEBD745537240120 /* TransactionDetailSheet.swift */,
 				E2741D6BCE6B7D6009B04861 /* TransactionsListView.swift */,
 				B538383F92C4A61D1DDED1A9 /* Assets.xcassets */,
@@ -265,8 +259,8 @@
 				84ACAC00E5D2357678B03203 /* CategoryItem.swift in Sources */,
 				6C9BE0694400F0DF65D164A3 /* CategoryProvision.swift in Sources */,
 				9EA2921A326F5FFE616932EA /* CategoryQuotaRule.swift in Sources */,
-				E1B82E4B4D39E9D55166C19E /* ChatMessage.swift in Sources */,
-				D08D1D3850F70C60C3EBCD40 /* CloudAIModels.swift in Sources */,
+				E1B82E4B4D39E9D55166C19E /* LoanModel.swift in Sources */,
+				D08D1D3850F70C60C3EBCD40 /* FinancingModel.swift in Sources */,
 				1094F151AFA32F5D452A0033 /* CloudSyncModels.swift in Sources */,
 				F59F24CCBB8DD9AF48419792 /* CreditContract.swift in Sources */,
 				ECA0803EA4EB170D31A9C8DE /* DebtItem.swift in Sources */,
@@ -275,11 +269,9 @@
 				DCCB471DB01018DCFFA875C7 /* AppConfiguration.swift in Sources */,
 				33000B8FCBBABB0A9C49783E /* AuthService.swift in Sources */,
 				78CE4228E7A657B61BAB5CB2 /* BackendAPIClient.swift in Sources */,
-				7887C3587F5976E612FD100C /* CloudAIService.swift in Sources */,
+				7887C3587F5976E612FD100C /* LoanAmortizationEngine.swift in Sources */,
 				343CF344E1F52080AEC9B5CE /* CloudSyncService.swift in Sources */,
 				12C2C9D09D2E9505B9B4B6EB /* FinancialDataStore.swift in Sources */,
-				A0703A1713E7F6B5C2DCB7A6 /* AIChatMainView.swift in Sources */,
-				3EEA5B7EE940806336E6DA48 /* AISuggestionPillView.swift in Sources */,
 				811362DFEAD6D6BB3E191DAB /* AccountsCarouselView.swift in Sources */,
 				9FCC3DBEAE3C78289852717D /* DashboardView.swift in Sources */,
 				02464C29ED59046CDAA9B00A /* FinancialHealthCard.swift in Sources */,
@@ -297,7 +289,7 @@
 				2460B1116BF541731A0FE909 /* AuthSheetView.swift in Sources */,
 				87DA8F8FFBB938442AD0D0CA /* CloudSyncSettingsView.swift in Sources */,
 				8C68F4B7E4BE1192D22BCA00 /* SettingsMainView.swift in Sources */,
-				9D908231871339BA75ED4D2A /* ReceiptCameraScannerView.swift in Sources */,
+				9D908231871339BA75ED4D2A /* AmortizationEngine.swift in Sources */,
 				745F756BC1420593C3CF3825 /* TransactionDetailSheet.swift in Sources */,
 				3805CF2164C6164D27130911 /* TransactionsListView.swift in Sources */,
 			);
