@@ -5,7 +5,6 @@ public struct ContentView: View {
     @StateObject private var store = FinancialDataStore()
     @StateObject private var authService: AuthService
     @StateObject private var syncService: CloudSyncService
-    @StateObject private var aiService = CloudAIService()
     @State private var selectedTab: AppTab = .dashboard
 
     public init() {
@@ -34,7 +33,6 @@ public struct ContentView: View {
                     TransactionsListView(
                         store: store,
                         syncService: syncService,
-                        aiService: aiService,
                         authService: authService
                     )
                 case .financeHub:
@@ -42,18 +40,10 @@ public struct ContentView: View {
                         store: store,
                         syncService: syncService
                     )
-                case .aiChat:
-                    AIChatMainView(
-                        store: store,
-                        syncService: syncService,
-                        aiService: aiService,
-                        authService: authService
-                    )
                 case .settings:
                     SettingsMainView(
                         store: store,
                         syncService: syncService,
-                        aiService: aiService,
                         authService: authService
                     )
                 }

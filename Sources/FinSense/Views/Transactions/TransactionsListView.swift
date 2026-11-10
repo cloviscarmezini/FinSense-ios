@@ -13,27 +13,20 @@ public enum TransactionFilterTab: String, CaseIterable, Identifiable {
 public struct TransactionsListView: View {
     @ObservedObject var store: FinancialDataStore
     @ObservedObject var syncService: CloudSyncService
-    @ObservedObject var aiService: CloudAIService
     @ObservedObject var authService: AuthService
 
     @State private var selectedFilter: TransactionFilterTab = .all
     @State private var searchText: String = ""
     @State private var isAddSheetPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
-    @State private var isCameraScannerPresented: Bool = false
-    @State private var isAuthSheetPresented: Bool = false
-    @State private var parsedFromOCR: ParsedTransactionDTO? = nil
-    @State private var isParsingReceiptAlert: Bool = false
 
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
-        aiService: CloudAIService,
         authService: AuthService
     ) {
         self.store = store
         self.syncService = syncService
-        self.aiService = aiService
         self.authService = authService
     }
 
@@ -49,14 +42,10 @@ public struct TransactionsListView: View {
                         syncService: syncService,
                         title: "Extrato",
                         subtitle: AppFormatters.monthYear(store.selectedMonth),
-                        trailingIcon: "camera.viewfinder"
+                        trailingIcon: "plus"
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        if authService.isAuthenticated {
-                            isCameraScannerPresented = true
-                        } else {
-                            isAuthSheetPresented = true
-                        }
+                        isAddSheetPresented = true
                     }
 
                     // Pílulas Deslizantes de Filtro
@@ -111,129 +100,61 @@ public struct TransactionsListView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.ultraThinMaterial))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.2), lineWidth: 0.8))
+                    .background(
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(.ultraThinMaterial)
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.15), lineWidth: 0.8))
+                    )
                     .padding(.horizontal, 20)
 
-                    // Lista Agrupada por Dia
+                    // Lista de Transações Agrupadas por Dia
                     if filteredGroupedDays.isEmpty {
-                        Spacer()
-                        VStack(spacing: 8) {
-                            Image(systemName: "tray")
-                                .font(.system(size: 38))
-                                .foregroundStyle(Color.secondary.opacity(0.5))
-                            Text("Nenhum lançamento encontrado")
+                        VStack(spacing: 12) {
+                            Spacer()
+                            Image(systemName: "tray.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(Color.secondary.opacity(0.4))
+                            Text("Nenhuma transação encontrada")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.primary)
-                            Text("Toque no botão '+' abaixo para cadastrar uma transação.")
-                                .font(.system(size: 12))
                                 .foregroundStyle(Color.secondary)
+                            Spacer()
                         }
-                        .padding(.horizontal, 30)
-                        Spacer()
                     } else {
-                        List {
-                            ForEach(filteredGroupedDays, id: \.date) { group in
-                                Section {
-                                    ForEach(group.transactions) { tx in
-                                        TransactionRow(
-                                            transaction: tx,
-                                            store: store,
-                                            onTap: {
-                                                editingTransaction = tx
-                                            }
-                                        )
-                                        .swipeActions(edge: .leading) {
-                                            Button {
-                                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                                store.toggleTransactionPaid(transactionId: tx.id)
-                                            } label: {
-                                                Label(
-                                                    tx.isPaid ? "Pendente" : "Pagar",
-                                                    systemImage: tx.isPaid ? "clock.fill" : "checkmark.circle.fill"
-                                                )
-                                            }
-                                            .tint(tx.isPaid ? Color(hex: "#F59E0B") : Color(hex: "#10B981"))
-                                        }
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                            Button(role: .destructive) {
-                                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                                store.deleteTransaction(tx.id)
-                                            } label: {
-                                                Label("Excluir", systemImage: "trash.fill")
-                                            }
+                        ScrollView {
+                            LazyVStack(spacing: 16) {
+                                ForEach(filteredGroupedDays, id: \.date) { group in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        // Header do Dia
+                                        HStack {
+                                            Text(AppFormatters.dayGroupHeader(group.date))
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundStyle(Color.secondary)
 
-                                            Button {
-                                                editingTransaction = tx
-                                            } label: {
-                                                Label("Editar", systemImage: "pencil")
-                                            }
-                                            .tint(Color(hex: "#0284C7"))
+                                            Spacer()
+
+                                            Text(AppFormatters.currency(group.netAmount))
+                                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(group.netAmount >= 0 ? Color(hex: "#10B981") : Color.secondary)
+                                        }
+                                        .padding(.horizontal, 24)
+
+                                        // Linhas do Dia
+                                        ForEach(group.transactions) { tx in
+                                            TransactionRow(
+                                                transaction: tx,
+                                                store: store,
+                                                onTap: {
+                                                    editingTransaction = tx
+                                                }
+                                            )
+                                            .padding(.horizontal, 20)
                                         }
                                     }
-                                } header: {
-                                    HStack {
-                                        Text(AppFormatters.dayGroupHeader(group.date))
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundStyle(Color.secondary)
-
-                                        Spacer()
-
-                                        Text(AppFormatters.currency(group.netAmount))
-                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                            .foregroundStyle(group.netAmount >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444"))
-                                    }
-                                    .padding(.vertical, 4)
                                 }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
                             }
+                            .padding(.top, 4)
+                            .padding(.bottom, 72)
                         }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                    }
-
-                    // Espaço para a TabBar flutuante
-                    Color.clear.frame(height: 60)
-                }
-
-                // Botão Flutuante de Adicionar Nova Transação
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            isAddSheetPresented = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 54, height: 54)
-                                .background(Circle().fill(Color(hex: "#0284C7")))
-                                .shadow(color: Color(hex: "#0284C7").opacity(0.4), radius: 10, x: 0, y: 5)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 22)
-                        .padding(.bottom, 72)
-                    }
-                }
-
-                // Overlay de Carregamento durante OCR de Recibo
-                if aiService.isParsingReceipt {
-                    ZStack {
-                        Color.black.opacity(0.45).ignoresSafeArea()
-                        VStack(spacing: 14) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .scaleEffect(1.4)
-                            Text("Processando recibo com IA...")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-                        .padding(24)
-                        .background(RoundedRectangle(cornerRadius: 18).fill(.ultraThinMaterial))
                     }
                 }
             }
@@ -242,41 +163,6 @@ public struct TransactionsListView: View {
             }
             .sheet(item: $editingTransaction) { tx in
                 TransactionDetailSheet(store: store, syncService: syncService, editingTransaction: tx)
-            }
-            .sheet(isPresented: $isCameraScannerPresented) {
-                ReceiptCameraScannerView(
-                    onImageCaptured: { image in
-                        isCameraScannerPresented = false
-                        processCapturedReceipt(image)
-                    },
-                    onCancel: {
-                        isCameraScannerPresented = false
-                    }
-                )
-            }
-            .sheet(item: $parsedFromOCR) { parsed in
-                TransactionDetailSheet(store: store, syncService: syncService, prefilledParsed: parsed)
-            }
-            .sheet(isPresented: $isAuthSheetPresented) {
-                AuthSheetView(authService: authService, baseURL: syncService.baseURLString)
-            }
-        }
-    }
-
-    private func processCapturedReceipt(_ image: UIImage) {
-        Task {
-            do {
-                let transactions = try await aiService.parseReceiptImage(
-                    image: image,
-                    baseURL: syncService.baseURLString,
-                    bearerToken: authService.accessToken
-                )
-                if let first = transactions.first {
-                    parsedFromOCR = first
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                }
-            } catch {
-                UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }
     }

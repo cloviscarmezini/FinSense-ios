@@ -4,7 +4,6 @@ import SwiftUI
 public struct SettingsMainView: View {
     @ObservedObject var store: FinancialDataStore
     @ObservedObject var syncService: CloudSyncService
-    @ObservedObject var aiService: CloudAIService
     @ObservedObject var authService: AuthService
 
     @State private var isAuthSheetPresented: Bool = false
@@ -14,12 +13,10 @@ public struct SettingsMainView: View {
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
-        aiService: CloudAIService,
         authService: AuthService
     ) {
         self.store = store
         self.syncService = syncService
-        self.aiService = aiService
         self.authService = authService
     }
 

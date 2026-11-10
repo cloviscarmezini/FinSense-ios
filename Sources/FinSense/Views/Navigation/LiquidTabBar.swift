@@ -6,8 +6,7 @@ public enum AppTab: Int, CaseIterable, Identifiable {
     case dashboard = 0
     case transactions = 1
     case financeHub = 2
-    case aiChat = 3
-    case settings = 4
+    case settings = 3
 
     public var id: Int { rawValue }
 
@@ -16,7 +15,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         case .dashboard: return "Início"
         case .transactions: return "Extrato"
         case .financeHub: return "Finanças"
-        case .aiChat: return "FinSense AI"
         case .settings: return "Ajustes"
         }
     }
@@ -26,7 +24,6 @@ public enum AppTab: Int, CaseIterable, Identifiable {
         case .dashboard: return "chart.pie.fill"
         case .transactions: return "list.bullet.rectangle.portrait.fill"
         case .financeHub: return "building.columns.fill"
-        case .aiChat: return "sparkles"
         case .settings: return "gearshape.fill"
         }
     }

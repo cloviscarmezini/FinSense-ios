@@ -22,8 +22,7 @@ public struct TransactionDetailSheet: View {
     public init(
         store: FinancialDataStore,
         syncService: CloudSyncService,
-        editingTransaction: FinancialTransaction? = nil,
-        prefilledParsed: ParsedTransactionDTO? = nil
+        editingTransaction: FinancialTransaction? = nil
     ) {
         self.store = store
         self.syncService = syncService
@@ -32,8 +31,6 @@ public struct TransactionDetailSheet: View {
         let initialType: TransactionType
         if let editing = editingTransaction {
             initialType = editing.type
-        } else if let parsed = prefilledParsed {
-            initialType = parsed.type.lowercased() == "receita" ? .income : .expense
         } else {
             initialType = .expense
         }
@@ -58,14 +55,6 @@ public struct TransactionDetailSheet: View {
             _selectedAccountId = State(initialValue: editing.accountId)
             _recurrenceMode = State(initialValue: editing.recurrenceMode)
             _installmentTotal = State(initialValue: editing.installmentTotal ?? 12)
-        } else if let parsed = prefilledParsed {
-            _name = State(initialValue: parsed.description)
-            _amountString = State(initialValue: String(format: "%.2f", parsed.amount))
-            _type = State(initialValue: initialType)
-            _isPaid = State(initialValue: true)
-            _date = State(initialValue: Date())
-            _selectedCategoryId = State(initialValue: fallbackCatId)
-            _selectedAccountId = State(initialValue: fallbackAccId)
         } else {
             _name = State(initialValue: "")
             _details = State(initialValue: "")
