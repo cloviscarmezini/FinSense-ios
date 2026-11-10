@@ -17,25 +17,28 @@ if [ -n "$SRCROOT" ]; then
     PROJECT_ROOT="$SRCROOT"
 fi
 
-# Locate the compiled FinSense executable
-EXECUTABLE_PATH=""
-if [ -n "$BUILT_PRODUCTS_DIR" ] && [ -f "$BUILT_PRODUCTS_DIR/FinSense" ]; then
-    EXECUTABLE_PATH="$BUILT_PRODUCTS_DIR/FinSense"
-elif [ -f "$PROJECT_ROOT/build/FinSense.app/FinSense" ]; then
-    EXECUTABLE_PATH="$PROJECT_ROOT/build/FinSense.app/FinSense"
-fi
-
-APP_BUNDLE_DIR="$PROJECT_ROOT/build/FinSense.app"
+# Locate the target bundle directory
+APP_BUNDLE_DIR=""
 if [ -n "$BUILT_PRODUCTS_DIR" ]; then
     APP_BUNDLE_DIR="$BUILT_PRODUCTS_DIR/FinSense.app"
+else
+    APP_BUNDLE_DIR="$PROJECT_ROOT/build/FinSense.app"
 fi
 
-# Assemble / update the .app bundle
-mkdir -p "$APP_BUNDLE_DIR"
-if [ -n "$EXECUTABLE_PATH" ] && [ "$EXECUTABLE_PATH" != "$APP_BUNDLE_DIR/FinSense" ]; then
+# Locate the compiled FinSense executable
+EXECUTABLE_PATH=""
+if [ -f "$APP_BUNDLE_DIR/FinSense" ]; then
+    EXECUTABLE_PATH="$APP_BUNDLE_DIR/FinSense"
+    echo "Using existing app bundle executable: $EXECUTABLE_PATH" >> "$LOG_FILE"
+elif [ -n "$BUILT_PRODUCTS_DIR" ] && [ -f "$BUILT_PRODUCTS_DIR/FinSense" ]; then
+    EXECUTABLE_PATH="$BUILT_PRODUCTS_DIR/FinSense"
+    mkdir -p "$APP_BUNDLE_DIR"
     cp "$EXECUTABLE_PATH" "$APP_BUNDLE_DIR/FinSense"
 fi
-cp "$PROJECT_ROOT/Info.plist" "$APP_BUNDLE_DIR/Info.plist"
+
+if [ ! -f "$APP_BUNDLE_DIR/Info.plist" ] && [ -f "$PROJECT_ROOT/Info.plist" ]; then
+    cp "$PROJECT_ROOT/Info.plist" "$APP_BUNDLE_DIR/Info.plist"
+fi
 
 # 1. Determine Device Identifier
 DEVICE_ID="${TARGET_DEVICE_IDENTIFIER}"
@@ -145,12 +148,31 @@ else
     codesign --force --sign - --timestamp=none "$APP_BUNDLE_DIR" >> "$LOG_FILE" 2>&1 || true
 fi
 
-# Keep project root build/ directory synchronized
-if [ "$APP_BUNDLE_DIR" != "$PROJECT_ROOT/build/FinSense.app" ]; then
-    mkdir -p "$PROJECT_ROOT/build"
-    rm -rf "$PROJECT_ROOT/build/FinSense.app"
-    cp -R "$APP_BUNDLE_DIR" "$PROJECT_ROOT/build/FinSense.app"
+# Verify Mach-O platform matches the target device
+if [ -f "$APP_BUNDLE_DIR/FinSense" ]; then
+    BINARY_PLATFORM=$(vtool -show-build "$APP_BUNDLE_DIR/FinSense" 2>/dev/null | grep "platform" | awk '{print $2}' || true)
+    echo "Executable Mach-O platform: $BINARY_PLATFORM (IS_PHYSICAL=$IS_PHYSICAL)" >> "$LOG_FILE"
+    
+    if [ "$IS_PHYSICAL" = "0" ] && [ "$BINARY_PLATFORM" = "IOS" ]; then
+        echo "ERROR: Executable was compiled for physical device (platform IOS) but destination is a simulator (iOS-simulator)." >> "$LOG_FILE"
+        osascript -e 'display alert "FinSense: Conflito de Plataforma" message "O executável foi compilado para dispositivo físico (iOS) mas o destino atual é um Simulador.\n\nLimpe o cache do build no Xcode (Shift+Cmd+K) e recompile." as critical' 2>/dev/null || true
+        exit 1
+    elif [ "$IS_PHYSICAL" = "1" ] && [ "$BINARY_PLATFORM" = "IOSSIMULATOR" ]; then
+        echo "ERROR: Executable was compiled for simulator (platform IOSSIMULATOR) but destination is a physical device." >> "$LOG_FILE"
+        osascript -e 'display alert "FinSense: Conflito de Plataforma" message "O executável foi compilado para Simulador mas o destino atual é um Dispositivo Físico.\n\nLimpe o cache do build no Xcode (Shift+Cmd+K) e recompile." as critical' 2>/dev/null || true
+        exit 1
+    fi
 fi
+
+# Keep platform-separated build cache synchronized
+PLATFORM_SUBDIR="iphonesimulator"
+if [ "$IS_PHYSICAL" = "1" ]; then
+    PLATFORM_SUBDIR="iphoneos"
+fi
+
+mkdir -p "$PROJECT_ROOT/build/$PLATFORM_SUBDIR"
+rm -rf "$PROJECT_ROOT/build/$PLATFORM_SUBDIR/FinSense.app"
+cp -R "$APP_BUNDLE_DIR" "$PROJECT_ROOT/build/$PLATFORM_SUBDIR/FinSense.app"
 
 # 6. Install and Launch on the resolved target
 if [ "$IS_PHYSICAL" = "1" ]; then
