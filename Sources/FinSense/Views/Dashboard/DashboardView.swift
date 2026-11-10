@@ -71,6 +71,14 @@ public struct DashboardView: View {
                         // Seção Completa de Passivos & Compromissos Futuros
                         liabilitiesSection
 
+                        // Comprometimento de Renda vs. Receitas (Donut Chart + Lista)
+                        IncomeCommitmentDonutCard(
+                            store: store,
+                            referenceDate: store.selectedMonth,
+                            isAnnual: isAnnual
+                        )
+                        .padding(.horizontal, 20)
+
                         // Carrossel Horizontal de Contas Bancárias
                         AccountsCarouselView(store: store) {
                             isAddAccountSheetPresented = true
@@ -537,13 +545,27 @@ public struct DashboardView: View {
             isAnnual: isAnnual
         )
 
+        let loansPeriodInstallment = store.periodInstallmentsTotal(
+            for: .loan,
+            referenceDate: store.selectedMonth,
+            isAnnual: isAnnual
+        )
+
+        let financingsPeriodInstallment = store.periodInstallmentsTotal(
+            for: .financing,
+            referenceDate: store.selectedMonth,
+            isAnnual: isAnnual
+        )
+
+        let totalPeriodInstallments = loansPeriodInstallment + financingsPeriodInstallment
+
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Passivos & Compromissos")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.primary)
-                    Text("Dívidas, contratos e parcelas a vencer")
+                    Text("Dívidas contratuais e saldo a liquidar")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.secondary)
                 }
@@ -558,7 +580,7 @@ public struct DashboardView: View {
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundStyle(Color(hex: "#EF4444"))
                     if abs(debtSummary.grandTotalNominal - debtSummary.grandTotalWithPayoffProjection) > 0.01 {
-                        Text("Nominal: \(AppFormatters.currency(debtSummary.grandTotalNominal))")
+                        Text("Nominal Futuro: \(AppFormatters.currency(debtSummary.grandTotalNominal))")
                             .font(.system(size: 9))
                             .foregroundStyle(Color.secondary)
                     }
@@ -566,55 +588,48 @@ public struct DashboardView: View {
             }
             .padding(.horizontal, 20)
 
-            // Carrossel dos Pilares de Passivos
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    let periodExpenseTitle = isAnnual ? "Despesas do Ano" : "Despesas do Mês"
-                    let periodExpenseAmount = isAnnual
-                        ? store.annualExpense(for: store.selectedMonth)
-                        : store.monthlyExpense(for: store.selectedMonth)
-                    let pendingCount = debtSummary.currentMonthUnpaidTransactions.count
-                    let periodSubtitle = isAnnual
-                        ? "Total de despesas do ano"
-                        : (pendingCount > 0 ? "\(pendingCount) pendente(s)" : "Total de despesas do mês")
+            // Grade 2x2 dos 4 Pilares de Passivos Contratuais
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                // Card 1 — Passivo Total (Dívida Real)
+                debtPillarMiniCard(
+                    title: "Passivo Total",
+                    subtitle: "Parcelas: \(AppFormatters.currency(totalPeriodInstallments))",
+                    amount: debtSummary.grandTotalWithPayoffProjection,
+                    nominal: debtSummary.grandTotalNominal,
+                    icon: "shield.lefthalf.filled",
+                    colorHex: "#EF4444"
+                )
 
-                    debtPillarMiniCard(
-                        title: periodExpenseTitle,
-                        subtitle: periodSubtitle,
-                        amount: periodExpenseAmount,
-                        icon: "creditcard.fill",
-                        colorHex: "#F59E0B"
-                    )
+                // Card 2 — Dívidas (Acordos / Serasa)
+                debtPillarMiniCard(
+                    title: "Dívidas (Acordos)",
+                    subtitle: "\(debtSummary.activeDebts.count) dívida(s) ativa(s)",
+                    amount: debtSummary.unpaidDebtsTotal,
+                    icon: "exclamationmark.triangle.fill",
+                    colorHex: "#DC2626"
+                )
 
-                    debtPillarMiniCard(
-                        title: "Dívidas (Acordos)",
-                        subtitle: "\(debtSummary.activeDebts.count) dívida(s)",
-                        amount: debtSummary.unpaidDebtsTotal,
-                        icon: "exclamationmark.triangle.fill",
-                        colorHex: "#EF4444"
-                    )
+                // Card 3 — Empréstimos
+                debtPillarMiniCard(
+                    title: "Empréstimos",
+                    subtitle: "\(debtSummary.activeLoans.count) contr. • \(AppFormatters.currency(loansPeriodInstallment))",
+                    amount: debtSummary.loansProjectedPayoffTotal,
+                    nominal: debtSummary.loansRemainingNominalTotal,
+                    icon: "banknote.fill",
+                    colorHex: "#F59E0B"
+                )
 
-                    debtPillarMiniCard(
-                        title: "Empréstimos",
-                        subtitle: "\(debtSummary.activeLoans.count) contrato(s)",
-                        amount: debtSummary.loansProjectedPayoffTotal,
-                        nominal: debtSummary.loansRemainingNominalTotal,
-                        icon: "banknote.fill",
-                        colorHex: "#D97706"
-                    )
-
-                    debtPillarMiniCard(
-                        title: "Financiamentos",
-                        subtitle: "\(debtSummary.activeFinancings.count) contrato(s)",
-                        amount: debtSummary.financingsProjectedPayoffTotal,
-                        nominal: debtSummary.financingsRemainingNominalTotal,
-                        icon: "house.and.flag.fill",
-                        colorHex: "#8B5CF6"
-                    )
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 2)
+                // Card 4 — Financiamentos
+                debtPillarMiniCard(
+                    title: "Financiamentos",
+                    subtitle: "\(debtSummary.activeFinancings.count) contr. • \(AppFormatters.currency(financingsPeriodInstallment))",
+                    amount: debtSummary.financingsProjectedPayoffTotal,
+                    nominal: debtSummary.financingsRemainingNominalTotal,
+                    icon: "house.fill",
+                    colorHex: "#8B5CF6"
+                )
             }
+            .padding(.horizontal, 20)
         }
     }
 
@@ -642,11 +657,13 @@ public struct DashboardView: View {
                     .foregroundStyle(Color(hex: colorHex))
                     .monospacedDigit()
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
 
                 Text(subtitle)
                     .font(.system(size: 9.5))
                     .foregroundStyle(Color.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
                 if let nominal, abs(nominal - amount) > 0.01 {
                     Text("Nominal: \(AppFormatters.currency(nominal))")
@@ -655,7 +672,7 @@ public struct DashboardView: View {
                         .lineLimit(1)
                 }
             }
-            .frame(width: 145, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

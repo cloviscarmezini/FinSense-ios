@@ -2488,9 +2488,8 @@ public final class FinancialDataStore: ObservableObject {
             )
         }
 
-        let periodExpensesSum = isAnnual ? annualExpense(for: referenceDate) : monthlyExpense(for: referenceDate)
-        let totalNominal = periodExpensesSum + debtsSum + loansNominalSum + financingsNominalSum
-        let totalProjected = periodExpensesSum + debtsSum + loansProjectedSum + financingsProjectedSum
+        let debtStockNominal = debtsSum + loansNominalSum + financingsNominalSum
+        let debtStockProjected = debtsSum + loansProjectedSum + financingsProjectedSum
 
         return ComprehensiveDebtSummary(
             currentMonthUnpaidTransactions: currentPeriodUnpaid,
@@ -2511,10 +2510,34 @@ public final class FinancialDataStore: ObservableObject {
             loansRealAmortizationInPeriodTotal: loansRealAmortizationTotal,
             financingsPaidInPeriodTotal: financingsPaidTotal,
             financingsRealAmortizationInPeriodTotal: financingsRealAmortizationTotal,
-            grandTotalNominal: totalNominal,
-            grandTotalWithPayoffProjection: totalProjected,
+            grandTotalNominal: debtStockNominal,
+            grandTotalWithPayoffProjection: debtStockProjected,
             itemizedLines: items
         )
+    }
+
+    public func periodInstallmentsTotal(for kind: CreditContractKind, referenceDate: Date, isAnnual: Bool) -> Double {
+        let active = activeContracts(for: kind)
+        guard !active.isEmpty else { return 0.0 }
+        let ids = Set(active.map(\.id))
+        if isAnnual {
+            let txs = transactions.filter {
+                isInYear($0.date, yearReference: referenceDate) &&
+                $0.type == .expense &&
+                $0.linkedContractId != nil &&
+                ids.contains($0.linkedContractId!)
+            }.reduce(0.0) { $0 + $1.amount }
+            if txs > 0 { return txs }
+            return active.reduce(0.0) { $0 + ($1.installmentAmount * 12.0) }
+        } else {
+            let txs = transactionsForMonth(referenceDate).filter {
+                $0.type == .expense &&
+                $0.linkedContractId != nil &&
+                ids.contains($0.linkedContractId!)
+            }.reduce(0.0) { $0 + $1.amount }
+            if txs > 0 { return txs }
+            return active.reduce(0.0) { $0 + $1.installmentAmount }
+        }
     }
 
     public func monthEndBalanceCardTitle(for month: Date) -> String {
