@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1A0F1112D9E000100000004 /* BRLCurrencyTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */; };
 		E1A0F1112D9E000100000002 /* IncomeCommitmentDonutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */; };
 		02464C29ED59046CDAA9B00A /* FinancialHealthCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */; };
 		04514690D1BC66FF6E34CFBA /* FinanceHubMainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */; };
@@ -65,6 +66,7 @@
 		303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/InvestmentsManagerView.swift; sourceTree = "<group>"; };
 		3498293DFE58F339A6802E3C /* SettingsMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsMainView.swift; path = Sources/FinSense/Views/Settings/SettingsMainView.swift; sourceTree = "<group>"; };
 		504A34A7C94554496B28920A /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfiguration.swift; path = Sources/FinSense/Services/AppConfiguration.swift; sourceTree = "<group>"; };
+		E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BRLCurrencyTextField.swift; path = Sources/FinSense/DesignSystem/BRLCurrencyTextField.swift; sourceTree = "<group>"; };
 		5C44B1641575E01E2D8C58CD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DashboardView.swift; path = Sources/FinSense/Views/Dashboard/DashboardView.swift; sourceTree = "<group>"; };
 		E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IncomeCommitmentDonutCard.swift; path = Sources/FinSense/Views/Dashboard/IncomeCommitmentDonutCard.swift; sourceTree = "<group>"; };
 		5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebtsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/DebtsManagerView.swift; sourceTree = "<group>"; };
@@ -158,6 +160,7 @@
 				A0E23DF825DAB23CF714524C /* LoanAmortizationEngine.swift */,
 				8E2C2412F73FC36EDF143F02 /* CloudSyncService.swift */,
 				96E0FD32E99638309FF9E0AC /* FinancialDataStore.swift */,
+				E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */,
 				A204A663ACDF35DDE8C41A1B /* AccountsCarouselView.swift */,
 				5C44B1641575E01E2D8C58CD /* DashboardView.swift */,
 				E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */,
@@ -275,6 +278,7 @@
 				7887C3587F5976E612FD100C /* LoanAmortizationEngine.swift in Sources */,
 				343CF344E1F52080AEC9B5CE /* CloudSyncService.swift in Sources */,
 				12C2C9D09D2E9505B9B4B6EB /* FinancialDataStore.swift in Sources */,
+				E1A0F1112D9E000100000004 /* BRLCurrencyTextField.swift in Sources */,
 				811362DFEAD6D6BB3E191DAB /* AccountsCarouselView.swift in Sources */,
 				9FCC3DBEAE3C78289852717D /* DashboardView.swift in Sources */,
 				E1A0F1112D9E000100000002 /* IncomeCommitmentDonutCard.swift in Sources */,

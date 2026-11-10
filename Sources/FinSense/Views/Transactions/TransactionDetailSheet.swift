@@ -47,7 +47,7 @@ public struct TransactionDetailSheet: View {
         if let editing = editingTransaction {
             _name = State(initialValue: editing.name)
             _details = State(initialValue: editing.details)
-            _amountString = State(initialValue: String(format: "%.2f", editing.amount))
+            _amountString = State(initialValue: AppFormatters.currency(editing.amount))
             _date = State(initialValue: editing.date)
             _type = State(initialValue: editing.type)
             _isPaid = State(initialValue: editing.isPaid)
@@ -82,11 +82,9 @@ public struct TransactionDetailSheet: View {
                     TextField("Descrição (ex: Supermercado, Aluguel)", text: $name)
 
                     HStack {
-                        Text("Valor (R$)")
+                        Text("Valor")
                         Spacer()
-                        TextField("0,00", text: $amountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $amountString)
                     }
 
                     DatePicker("Data", selection: $date, displayedComponents: [.date])
@@ -146,7 +144,7 @@ public struct TransactionDetailSheet: View {
                     Button("Salvar") {
                         saveTransaction()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || AppFormatters.parseAmount(amountString) == nil)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || (AppFormatters.parseAmount(amountString) ?? 0.0) <= 0.0)
                 }
             }
             .onAppear {

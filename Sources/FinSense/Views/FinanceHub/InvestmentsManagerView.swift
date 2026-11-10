@@ -148,7 +148,7 @@ public struct InvestmentEditorSheet: View {
 
     @State private var name: String = ""
     @State private var groupName: String = "Renda Fixa"
-    @State private var initialBalanceString: String = "0,00"
+    @State private var initialBalanceString: String = ""
     @State private var selectedAccountId: UUID = UUID()
     @State private var colorHex: String = "#10B981"
 
@@ -160,11 +160,9 @@ public struct InvestmentEditorSheet: View {
                     TextField("Grupo (ex: Renda Fixa, Ações, Cofrinho)", text: $groupName)
 
                     HStack {
-                        Text("Saldo Atual (R$)")
+                        Text("Saldo Atual")
                         Spacer()
-                        TextField("0,00", text: $initialBalanceString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $initialBalanceString)
                     }
 
                     Picker("Conta de Custódia", selection: $selectedAccountId) {
@@ -227,11 +225,9 @@ public struct InvestmentMovementSheet: View {
 
                 Section("Valores") {
                     HStack {
-                        Text("Valor (R$)")
+                        Text("Valor")
                         Spacer()
-                        TextField("0,00", text: $amountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $amountString)
                     }
 
                     Picker(movementType == .deposit ? "Debitar da Conta" : "Creditar na Conta", selection: $selectedSourceAccountId) {

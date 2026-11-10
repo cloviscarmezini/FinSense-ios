@@ -495,7 +495,7 @@ public struct ProvisionEditorSheet: View {
         let year = cal.component(.year, from: store.selectedMonth)
         let month = cal.component(.month, from: store.selectedMonth)
         let existing = store.provisions.first(where: { $0.categoryId == initialCatId && $0.year == year && $0.month == month })
-        let initialAmount = existing != nil ? String(format: "%.2f", existing!.estimatedAmount) : ""
+        let initialAmount = existing != nil ? AppFormatters.currency(existing!.estimatedAmount) : ""
         _amountString = State(initialValue: initialAmount)
         _repeatForFuture = State(initialValue: existing?.repeatForFutureMonths ?? true)
     }
@@ -530,11 +530,9 @@ public struct ProvisionEditorSheet: View {
 
                 Section("Teto Mensal") {
                     HStack {
-                        Text("Valor Previsto (R$)")
+                        Text("Valor Previsto")
                         Spacer()
-                        TextField("0,00", text: $amountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $amountString)
                     }
 
                     Toggle("Repetir para os próximos meses", isOn: $repeatForFuture)

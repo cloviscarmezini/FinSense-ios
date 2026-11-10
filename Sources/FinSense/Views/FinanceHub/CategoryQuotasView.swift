@@ -207,7 +207,7 @@ public struct QuotaEditorSheet: View {
     @State private var name: String = ""
     @State private var selectedCategoryId: UUID = UUID()
     @State private var plannedQuantity: Int = 4
-    @State private var unitPriceString: String = "50,00"
+    @State private var unitPriceString: String = AppFormatters.currency(50.0)
     @State private var repeatForFuture: Bool = true
 
     public var body: some View {
@@ -227,11 +227,9 @@ public struct QuotaEditorSheet: View {
                     Stepper("Quantidade Mensal: \(plannedQuantity)", value: $plannedQuantity, in: 1...100)
 
                     HStack {
-                        Text("Preço Unitário Estimado (R$)")
+                        Text("Preço Unitário Estimado")
                         Spacer()
-                        TextField("0,00", text: $unitPriceString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $unitPriceString)
                     }
 
                     Toggle("Repetir para os meses seguintes", isOn: $repeatForFuture)

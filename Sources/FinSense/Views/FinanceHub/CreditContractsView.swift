@@ -481,11 +481,9 @@ public struct SettleContractSheet: View {
 
                 Section("Pagamento da Quitação") {
                     HStack {
-                        Text("Valor Final (R$)")
+                        Text("Valor Final")
                         Spacer()
-                        TextField("0,00", text: $finalPayoffAmountText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $finalPayoffAmountText)
                     }
 
                     HStack(spacing: 8) {
@@ -561,8 +559,8 @@ public struct ContractEditorSheet: View {
 
     @State private var kind: CreditContractKind
     @State private var name: String = ""
-    @State private var totalAmountString: String = "0,00"
-    @State private var installmentAmountString: String = "0,00"
+    @State private var totalAmountString: String = ""
+    @State private var installmentAmountString: String = ""
     @State private var totalInstallments: Int = 360
     @State private var interestRateString: String = "0,85"
     @State private var billingDay: Int = 10
@@ -595,19 +593,15 @@ public struct ContractEditorSheet: View {
 
                 Section("Condições Financeiras") {
                     HStack {
-                        Text("Saldo Financiado (R$)")
+                        Text("Saldo Financiado")
                         Spacer()
-                        TextField("0,00", text: $totalAmountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $totalAmountString)
                     }
 
                     HStack {
-                        Text("Valor da Parcela (R$)")
+                        Text("Valor da Parcela")
                         Spacer()
-                        TextField("0,00", text: $installmentAmountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $installmentAmountString)
                     }
 
                     Stepper("Prazo: \(totalInstallments) parcelas", value: $totalInstallments, in: 6...420)
@@ -681,7 +675,7 @@ public struct AmortizationSimulatorSheet: View {
     public let contract: CreditContract
     @Environment(\.dismiss) var dismiss
 
-    @State private var amortizeAmountString: String = "5000,00"
+    @State private var amortizeAmountString: String = AppFormatters.currency(5000.0)
     @State private var mode: AmortizationRecalculationMode = .reduceTerm
     @State private var selectedAccountId: UUID = UUID()
     @State private var isConfirmingRealAmortization: Bool = false
@@ -735,11 +729,9 @@ public struct AmortizationSimulatorSheet: View {
             Form {
                 Section("Simulação de Aporte Extraordinário") {
                     HStack {
-                        Text("Valor a Amortizar (R$)")
+                        Text("Valor a Amortizar")
                         Spacer()
-                        TextField("5000,00", text: $amortizeAmountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $amortizeAmountString)
                     }
 
                     Picker("Estratégia", selection: $mode) {

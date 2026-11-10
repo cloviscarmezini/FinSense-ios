@@ -102,7 +102,7 @@ public struct AccountEditorSheet: View {
 
     @State private var name: String = ""
     @State private var selectedPresetId: String? = nil
-    @State private var initialBalanceString: String = "0,00"
+    @State private var initialBalanceString: String = ""
     @State private var agency: String = ""
     @State private var accountNumber: String = ""
     @State private var iconSymbol: String = "building.columns.fill"
@@ -115,7 +115,7 @@ public struct AccountEditorSheet: View {
         if let acc = editingAccount {
             _name = State(initialValue: acc.name)
             _selectedPresetId = State(initialValue: acc.bankPresetId)
-            _initialBalanceString = State(initialValue: String(format: "%.2f", acc.initialBalance))
+            _initialBalanceString = State(initialValue: AppFormatters.currency(acc.initialBalance))
             _agency = State(initialValue: acc.agency)
             _accountNumber = State(initialValue: acc.accountNumber)
             _iconSymbol = State(initialValue: acc.iconSymbol)
@@ -146,11 +146,9 @@ public struct AccountEditorSheet: View {
                     TextField("Nome da Conta", text: $name)
 
                     HStack {
-                        Text("Saldo Inicial (R$)")
+                        Text("Saldo Inicial")
                         Spacer()
-                        TextField("0,00", text: $initialBalanceString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $initialBalanceString)
                     }
 
                     TextField("Agência (opcional)", text: $agency)

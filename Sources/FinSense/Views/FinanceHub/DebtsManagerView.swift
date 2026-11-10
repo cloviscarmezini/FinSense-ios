@@ -163,7 +163,7 @@ public struct DebtEditorSheet: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var name: String = ""
-    @State private var originalAmountString: String = "0,00"
+    @State private var originalAmountString: String = ""
     @State private var notes: String = ""
 
     public var body: some View {
@@ -173,11 +173,9 @@ public struct DebtEditorSheet: View {
                     TextField("Credor / Nome (ex: Cartão Sam's Club, Serasa)", text: $name)
 
                     HStack {
-                        Text("Valor Original (R$)")
+                        Text("Valor Original")
                         Spacer()
-                        TextField("0,00", text: $originalAmountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $originalAmountString)
                     }
 
                     TextField("Observações / Histórico de Negociação", text: $notes, axis: .vertical)
@@ -196,7 +194,7 @@ public struct DebtEditorSheet: View {
                         store.createDebt(name: name, originalAmount: amount, notes: notes)
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || (AppFormatters.parseAmount(originalAmountString) ?? 0.0) <= 0.0)
                 }
             }
         }
@@ -214,7 +212,7 @@ public struct SettleDebtSheet: View {
     public init(store: FinancialDataStore, debt: DebtItem) {
         self.store = store
         self.debt = debt
-        _negotiatedAmountString = State(initialValue: String(format: "%.2f", debt.originalAmount))
+        _negotiatedAmountString = State(initialValue: AppFormatters.currency(debt.originalAmount))
     }
 
     public var body: some View {
@@ -222,11 +220,9 @@ public struct SettleDebtSheet: View {
             Form {
                 Section("Valor de Quitação Acordado") {
                     HStack {
-                        Text("Valor Negociado (R$)")
+                        Text("Valor Negociado")
                         Spacer()
-                        TextField("0,00", text: $negotiatedAmountString)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
+                        BRLCurrencyTextField("R$ 0,00", text: $negotiatedAmountString)
                     }
 
                     Picker("Conta de Pagamento", selection: $selectedAccountId) {
@@ -249,6 +245,7 @@ public struct SettleDebtSheet: View {
                         store.markDebtPaid(debtId: debt.id, negotiatedAmount: amount, paidFromAccountId: selectedAccountId)
                         dismiss()
                     }
+                    .disabled((AppFormatters.parseAmount(negotiatedAmountString) ?? 0.0) <= 0.0)
                 }
             }
             .onAppear {
