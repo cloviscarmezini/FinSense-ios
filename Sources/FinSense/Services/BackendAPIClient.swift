@@ -1,5 +1,6 @@
 // Sources/FinSense/Services/BackendAPIClient.swift
 import Foundation
+import UIKit
 
 public final class BackendAPIClient {
     public static let shared = BackendAPIClient()
@@ -9,6 +10,25 @@ public final class BackendAPIClient {
 
     public init(session: URLSession = .shared) {
         self.session = session
+    }
+
+    public static var persistentDeviceId: String {
+        let key = "finsense_persistent_device_id"
+        if let existing = UserDefaults.standard.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+        let newId = UUID().uuidString
+        UserDefaults.standard.set(newId, forKey: key)
+        return newId
+    }
+
+    public static func applyDeviceHeaders(to req: inout URLRequest) {
+        req.setValue(persistentDeviceId, forHTTPHeaderField: "X-Device-Id")
+        req.setValue("iOS", forHTTPHeaderField: "X-Platform")
+        req.setValue("1.0.0", forHTTPHeaderField: "X-App-Version")
+        let osVersion = UIDevice.current.systemVersion
+        let model = UIDevice.current.model
+        req.setValue("FinSense-iOS/1.0.0 (\(model); iOS \(osVersion))", forHTTPHeaderField: "User-Agent")
     }
 
     public func setBearerToken(_ token: String?) {
@@ -61,6 +81,8 @@ public final class BackendAPIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.applyDeviceHeaders(to: &req)
+
         if let authToken = token ?? bearerToken {
             req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -92,6 +114,8 @@ public final class BackendAPIClient {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.applyDeviceHeaders(to: &req)
+
         if let authToken = token ?? bearerToken {
             req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -119,6 +143,8 @@ public final class BackendAPIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.applyDeviceHeaders(to: &req)
+
         if let authToken = token ?? bearerToken {
             req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }
@@ -133,7 +159,6 @@ public final class BackendAPIClient {
         }
 
         guard (200...299).contains(httpRes.statusCode) else {
-            // Tenta decodificar mensagem de erro da API se disponível
             if let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let message = errorObj["message"] as? String {
                 throw NSError(domain: "BackendAPI", code: httpRes.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
@@ -158,6 +183,8 @@ public final class BackendAPIClient {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.applyDeviceHeaders(to: &req)
+
         if let authToken = token ?? bearerToken {
             req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         }

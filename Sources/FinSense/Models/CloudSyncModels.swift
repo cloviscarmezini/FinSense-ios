@@ -1,6 +1,7 @@
 // Sources/FinSense/Models/CloudSyncModels.swift
 import Foundation
 
+// MARK: - 1. Estado de Sincronização
 public enum SyncStatus: Equatable {
     case disabled
     case synced(lastSync: Date)
@@ -17,11 +18,21 @@ public enum SyncStatus: Equatable {
         case .authError: return "xmark.icloud.fill"
         }
     }
-}
 
-public enum SyncOperation: String, Codable {
-    case upsert = "UPSERT"
-    case delete = "DELETE"
+    public var statusDescription: String {
+        switch self {
+        case .disabled:
+            return "Sincronização em nuvem desativada"
+        case .synced(let date):
+            return "Sincronizado em \(BRLFormatters.dateTime(date))"
+        case .syncing:
+            return "Sincronizando com o servidor..."
+        case .outOfSync(let count, let reason):
+            return "\(count) alteração(ões) pendente(s) • \(reason)"
+        case .authError(let msg):
+            return "Erro de autenticação: \(msg)"
+        }
+    }
 }
 
 public struct AnyKey: CodingKey {
@@ -32,8 +43,16 @@ public struct AnyKey: CodingKey {
     public init(_ string: String) { self.stringValue = string; self.intValue = nil }
 }
 
+// MARK: - 2. Operações e Fila Outbox Local
+public enum SyncOperation: String, Codable {
+    case insert = "INSERT"
+    case update = "UPDATE"
+    case upsert = "UPSERT"
+    case delete = "DELETE"
+}
+
 public struct LocalSyncMutation: Identifiable, Codable, Hashable {
-    public var id: UUID
+    public var id: UUID // mutation_id idempotente
     public var entityName: String
     public var entityId: UUID
     public var operation: SyncOperation
@@ -57,20 +76,23 @@ public struct LocalSyncMutation: Identifiable, Codable, Hashable {
     }
 }
 
+// MARK: - 3. Payload de Envio (Push/Pull Request)
 public struct SyncPushPullRequest: Codable {
     public let clientId: String
     public let sinceRevision: Int64
     public let clientLastSyncRevision: Int64
     public let mutations: [SyncMutationDTO]
 
-    public init(
-        clientId: String,
-        sinceRevision: Int64? = nil,
-        clientLastSyncRevision: Int64,
-        mutations: [SyncMutationDTO]
-    ) {
+    public init(clientId: String, sinceRevision: Int64, mutations: [SyncMutationDTO]) {
         self.clientId = clientId
-        self.sinceRevision = sinceRevision ?? clientLastSyncRevision
+        self.sinceRevision = sinceRevision
+        self.clientLastSyncRevision = sinceRevision
+        self.mutations = mutations
+    }
+
+    public init(clientId: String, clientLastSyncRevision: Int64, mutations: [SyncMutationDTO]) {
+        self.clientId = clientId
+        self.sinceRevision = clientLastSyncRevision
         self.clientLastSyncRevision = clientLastSyncRevision
         self.mutations = mutations
     }
@@ -88,9 +110,28 @@ public struct SyncMutationDTO: Codable {
     public let entityName: String
     public let entityId: UUID
     public let operation: String
+    public let timestamp: String
     public let updatedAt: String
     public let data: [String: AnyCodableValue]?
     public let payload: [String: AnyCodableValue]?
+
+    public init(
+        mutationId: UUID,
+        entityName: String,
+        entityId: UUID,
+        operation: String,
+        timestamp: String,
+        data: [String: AnyCodableValue]? = nil
+    ) {
+        self.mutationId = mutationId
+        self.entityName = entityName
+        self.entityId = entityId
+        self.operation = operation
+        self.timestamp = timestamp
+        self.updatedAt = timestamp
+        self.data = data
+        self.payload = data
+    }
 
     public init(
         mutationId: UUID,
@@ -104,6 +145,7 @@ public struct SyncMutationDTO: Codable {
         self.entityName = entityName
         self.entityId = entityId
         self.operation = operation
+        self.timestamp = updatedAt
         self.updatedAt = updatedAt
         self.data = payload
         self.payload = payload
@@ -114,6 +156,7 @@ public struct SyncMutationDTO: Codable {
         case entityName = "entity_name"
         case entityId = "entity_id"
         case operation
+        case timestamp
         case updatedAt = "updated_at"
         case data
         case payload
@@ -125,7 +168,15 @@ public struct SyncMutationDTO: Codable {
         self.entityName = try container.decode(String.self, forKey: .entityName)
         self.entityId = try container.decode(UUID.self, forKey: .entityId)
         self.operation = try container.decode(String.self, forKey: .operation)
-        self.updatedAt = (try? container.decode(String.self, forKey: .updatedAt)) ?? ""
+
+        let timeStr = try? container.decode(String.self, forKey: .timestamp)
+        let updateStr = try? container.decode(String.self, forKey: .updatedAt)
+        let fallback = ISO8601DateFormatter().string(from: Date())
+        let resolved = updateStr ?? timeStr ?? fallback
+
+        self.timestamp = timeStr ?? resolved
+        self.updatedAt = updateStr ?? resolved
+
         let d = try? container.decodeIfPresent([String: AnyCodableValue].self, forKey: .data)
         let p = try? container.decodeIfPresent([String: AnyCodableValue].self, forKey: .payload)
         self.data = d ?? p
@@ -138,78 +189,66 @@ public struct SyncMutationDTO: Codable {
         try container.encode(entityName, forKey: .entityName)
         try container.encode(entityId, forKey: .entityId)
         try container.encode(operation, forKey: .operation)
+        try container.encode(timestamp, forKey: .timestamp)
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encodeIfPresent(data, forKey: .data)
         try container.encodeIfPresent(payload, forKey: .payload)
     }
 }
 
+// MARK: - 4. Resposta do Servidor (Push/Pull Response)
 public struct SyncPushPullResponse: Codable {
-    public let serverCurrentRevision: Int64
     public let latestRevision: Int64
-    public let acknowledgedMutationIds: [UUID]
     public let appliedMutationIds: [UUID]
-    public let rejectedMutations: [SyncRejectedMutationDTO]
     public let serverChanges: [SyncMutationDTO]?
     public let deltas: SyncDeltasContainerDTO?
     public let tombstones: [SyncTombstoneDTO]?
 
+    public var allAcknowledgedIds: [UUID] {
+        appliedMutationIds
+    }
+
+    public var serverCurrentRevision: Int64 {
+        latestRevision
+    }
+
+    public var acknowledgedMutationIds: [UUID] {
+        appliedMutationIds
+    }
+
     public init(
-        serverCurrentRevision: Int64,
-        latestRevision: Int64 = 0,
-        acknowledgedMutationIds: [UUID],
-        appliedMutationIds: [UUID] = [],
-        rejectedMutations: [SyncRejectedMutationDTO] = [],
+        latestRevision: Int64,
+        appliedMutationIds: [UUID],
         serverChanges: [SyncMutationDTO]? = nil,
         deltas: SyncDeltasContainerDTO? = nil,
         tombstones: [SyncTombstoneDTO]? = nil
     ) {
-        self.serverCurrentRevision = serverCurrentRevision
-        self.latestRevision = latestRevision == 0 ? serverCurrentRevision : latestRevision
-        self.acknowledgedMutationIds = acknowledgedMutationIds
-        self.appliedMutationIds = appliedMutationIds.isEmpty ? acknowledgedMutationIds : appliedMutationIds
-        self.rejectedMutations = rejectedMutations
+        self.latestRevision = latestRevision
+        self.appliedMutationIds = appliedMutationIds
         self.serverChanges = serverChanges
         self.deltas = deltas
         self.tombstones = tombstones
     }
 
-    enum CodingKeys: String, CodingKey {
-        case serverCurrentRevision = "server_current_revision"
-        case latestRevision = "latest_revision"
-        case acknowledgedMutationIds = "acknowledged_mutation_ids"
-        case appliedMutationIds = "applied_mutation_ids"
-        case rejectedMutations = "rejected_mutations"
-        case serverChanges = "server_changes"
-        case deltas
-        case tombstones
-    }
-
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let rev = try? container.decode(Int64.self, forKey: .serverCurrentRevision) {
-            self.serverCurrentRevision = rev
-            self.latestRevision = (try? container.decode(Int64.self, forKey: .latestRevision)) ?? rev
-        } else if let rev = try? container.decode(Int64.self, forKey: .latestRevision) {
-            self.serverCurrentRevision = rev
+
+        if let rev = try? container.decode(Int64.self, forKey: .latestRevision) {
+            self.latestRevision = rev
+        } else if let rev = try? container.decode(Int64.self, forKey: .serverCurrentRevision) {
             self.latestRevision = rev
         } else {
-            self.serverCurrentRevision = 0
             self.latestRevision = 0
         }
 
-        if let acks = try? container.decode([UUID].self, forKey: .acknowledgedMutationIds) {
-            self.acknowledgedMutationIds = acks
-            self.appliedMutationIds = (try? container.decode([UUID].self, forKey: .appliedMutationIds)) ?? acks
-        } else if let apps = try? container.decode([UUID].self, forKey: .appliedMutationIds) {
-            self.acknowledgedMutationIds = apps
-            self.appliedMutationIds = apps
+        if let ids = try? container.decode([UUID].self, forKey: .appliedMutationIds) {
+            self.appliedMutationIds = ids
+        } else if let ids = try? container.decode([UUID].self, forKey: .acknowledgedMutationIds) {
+            self.appliedMutationIds = ids
         } else {
-            self.acknowledgedMutationIds = []
             self.appliedMutationIds = []
         }
 
-        self.rejectedMutations = (try? container.decodeIfPresent([SyncRejectedMutationDTO].self, forKey: .rejectedMutations)) ?? []
         self.serverChanges = try? container.decodeIfPresent([SyncMutationDTO].self, forKey: .serverChanges)
         self.deltas = try? container.decodeIfPresent(SyncDeltasContainerDTO.self, forKey: .deltas)
         self.tombstones = try? container.decodeIfPresent([SyncTombstoneDTO].self, forKey: .tombstones)
@@ -217,14 +256,23 @@ public struct SyncPushPullResponse: Codable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(serverCurrentRevision, forKey: .serverCurrentRevision)
         try container.encode(latestRevision, forKey: .latestRevision)
-        try container.encode(acknowledgedMutationIds, forKey: .acknowledgedMutationIds)
+        try container.encode(latestRevision, forKey: .serverCurrentRevision)
         try container.encode(appliedMutationIds, forKey: .appliedMutationIds)
-        try container.encode(rejectedMutations, forKey: .rejectedMutations)
+        try container.encode(appliedMutationIds, forKey: .acknowledgedMutationIds)
         try container.encodeIfPresent(serverChanges, forKey: .serverChanges)
         try container.encodeIfPresent(deltas, forKey: .deltas)
         try container.encodeIfPresent(tombstones, forKey: .tombstones)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case latestRevision = "latest_revision"
+        case serverCurrentRevision = "server_current_revision"
+        case appliedMutationIds = "applied_mutation_ids"
+        case acknowledgedMutationIds = "acknowledged_mutation_ids"
+        case serverChanges = "server_changes"
+        case deltas
+        case tombstones
     }
 }
 
@@ -266,86 +314,69 @@ public struct SyncDeltasContainerDTO: Codable {
     public let categories: [CategoryItem]?
     public let financialTransactions: [FinancialTransaction]?
     public let investmentItems: [InvestmentItem]?
-    public let creditContracts: [CreditContract]?
     public let debtItems: [DebtItem]?
+    public let creditContracts: [CreditContract]?
     public let categoryProvisions: [CategoryProvision]?
     public let categoryQuotaRules: [CategoryQuotaRule]?
-    public let chatMessages: [ChatMessage]?
 
     public init(
         bankAccounts: [BankAccount]? = nil,
         categories: [CategoryItem]? = nil,
         financialTransactions: [FinancialTransaction]? = nil,
         investmentItems: [InvestmentItem]? = nil,
-        creditContracts: [CreditContract]? = nil,
         debtItems: [DebtItem]? = nil,
+        creditContracts: [CreditContract]? = nil,
         categoryProvisions: [CategoryProvision]? = nil,
-        categoryQuotaRules: [CategoryQuotaRule]? = nil,
-        chatMessages: [ChatMessage]? = nil
+        categoryQuotaRules: [CategoryQuotaRule]? = nil
     ) {
         self.bankAccounts = bankAccounts
         self.categories = categories
         self.financialTransactions = financialTransactions
         self.investmentItems = investmentItems
-        self.creditContracts = creditContracts
         self.debtItems = debtItems
+        self.creditContracts = creditContracts
         self.categoryProvisions = categoryProvisions
         self.categoryQuotaRules = categoryQuotaRules
-        self.chatMessages = chatMessages
     }
 
     enum CodingKeys: String, CodingKey {
         case bankAccounts = "bank_accounts"
-        case bankAccountsAlt = "bankAccounts"
         case categories
         case financialTransactions = "financial_transactions"
-        case financialTransactionsAlt = "financialTransactions"
         case investmentItems = "investment_items"
-        case investmentItemsAlt = "investmentItems"
-        case creditContracts = "credit_contracts"
-        case creditContractsAlt = "creditContracts"
         case debtItems = "debt_items"
-        case debtItemsAlt = "debtItems"
+        case creditContracts = "credit_contracts"
         case categoryProvisions = "category_provisions"
-        case categoryProvisionsAlt = "categoryProvisions"
         case categoryQuotaRules = "category_quota_rules"
-        case categoryQuotaRulesAlt = "categoryQuotaRules"
-        case chatMessages = "chat_messages"
-        case chatMessagesAlt = "chatMessages"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.bankAccounts = (try? container.decodeIfPresent([BankAccount].self, forKey: .bankAccounts))
-            ?? (try? container.decodeIfPresent([BankAccount].self, forKey: .bankAccountsAlt))
-        self.categories = try? container.decodeIfPresent([CategoryItem].self, forKey: .categories)
-        self.financialTransactions = (try? container.decodeIfPresent([FinancialTransaction].self, forKey: .financialTransactions))
-            ?? (try? container.decodeIfPresent([FinancialTransaction].self, forKey: .financialTransactionsAlt))
-        self.investmentItems = (try? container.decodeIfPresent([InvestmentItem].self, forKey: .investmentItems))
-            ?? (try? container.decodeIfPresent([InvestmentItem].self, forKey: .investmentItemsAlt))
-        self.creditContracts = (try? container.decodeIfPresent([CreditContract].self, forKey: .creditContracts))
-            ?? (try? container.decodeIfPresent([CreditContract].self, forKey: .creditContractsAlt))
-        self.debtItems = (try? container.decodeIfPresent([DebtItem].self, forKey: .debtItems))
-            ?? (try? container.decodeIfPresent([DebtItem].self, forKey: .debtItemsAlt))
-        self.categoryProvisions = (try? container.decodeIfPresent([CategoryProvision].self, forKey: .categoryProvisions))
-            ?? (try? container.decodeIfPresent([CategoryProvision].self, forKey: .categoryProvisionsAlt))
-        self.categoryQuotaRules = (try? container.decodeIfPresent([CategoryQuotaRule].self, forKey: .categoryQuotaRules))
-            ?? (try? container.decodeIfPresent([CategoryQuotaRule].self, forKey: .categoryQuotaRulesAlt))
-        self.chatMessages = (try? container.decodeIfPresent([ChatMessage].self, forKey: .chatMessages))
-            ?? (try? container.decodeIfPresent([ChatMessage].self, forKey: .chatMessagesAlt))
-    }
 
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(bankAccounts, forKey: .bankAccounts)
-        try container.encodeIfPresent(categories, forKey: .categories)
-        try container.encodeIfPresent(financialTransactions, forKey: .financialTransactions)
-        try container.encodeIfPresent(investmentItems, forKey: .investmentItems)
-        try container.encodeIfPresent(creditContracts, forKey: .creditContracts)
-        try container.encodeIfPresent(debtItems, forKey: .debtItems)
-        try container.encodeIfPresent(categoryProvisions, forKey: .categoryProvisions)
-        try container.encodeIfPresent(categoryQuotaRules, forKey: .categoryQuotaRules)
-        try container.encodeIfPresent(chatMessages, forKey: .chatMessages)
+        let snakeDecoder = JSONDecoder()
+        snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
+        snakeDecoder.dateDecodingStrategy = .iso8601
+
+        func decodeItems<T: Codable>(_ key: CodingKeys) -> [T]? {
+            if let direct = try? container.decodeIfPresent([T].self, forKey: key) {
+                return direct
+            }
+            if let anyVals = try? container.decodeIfPresent([AnyCodableValue].self, forKey: key),
+               let data = try? JSONEncoder().encode(anyVals),
+               let items = try? snakeDecoder.decode([T].self, from: data) {
+                return items
+            }
+            return nil
+        }
+
+        self.bankAccounts = decodeItems(.bankAccounts)
+        self.categories = decodeItems(.categories)
+        self.financialTransactions = decodeItems(.financialTransactions)
+        self.investmentItems = decodeItems(.investmentItems)
+        self.debtItems = decodeItems(.debtItems)
+        self.creditContracts = decodeItems(.creditContracts)
+        self.categoryProvisions = decodeItems(.categoryProvisions)
+        self.categoryQuotaRules = decodeItems(.categoryQuotaRules)
     }
 
     public var isEmpty: Bool {
@@ -360,37 +391,69 @@ public struct SyncDeltasContainerDTO: Codable {
     }
 }
 
-public enum AnyCodableValue: Codable, Hashable {
-    case string(String)
-    case int(Int)
-    case double(Double)
-    case bool(Bool)
-    case dictionary([String: AnyCodableValue])
-    case array([AnyCodableValue])
-    case null
+// MARK: - 5. Tipo Utilitário para Payload Dinâmico
+public struct AnyCodableValue: Codable, Hashable {
+    public let value: Any
+
+    public init(_ value: Any) {
+        self.value = value
+    }
+
+    public static func string(_ s: String) -> AnyCodableValue { AnyCodableValue(s) }
+    public static func int(_ i: Int) -> AnyCodableValue { AnyCodableValue(i) }
+    public static func double(_ d: Double) -> AnyCodableValue { AnyCodableValue(d) }
+    public static func bool(_ b: Bool) -> AnyCodableValue { AnyCodableValue(b) }
+
+    public static func == (lhs: AnyCodableValue, rhs: AnyCodableValue) -> Bool {
+        String(describing: lhs.value) == String(describing: rhs.value)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(String(describing: value))
+    }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        if container.decodeNil() { self = .null }
-        else if let b = try? container.decode(Bool.self) { self = .bool(b) }
-        else if let i = try? container.decode(Int.self) { self = .int(i) }
-        else if let d = try? container.decode(Double.self) { self = .double(d) }
-        else if let s = try? container.decode(String.self) { self = .string(s) }
-        else if let arr = try? container.decode([AnyCodableValue].self) { self = .array(arr) }
-        else if let dict = try? container.decode([String: AnyCodableValue].self) { self = .dictionary(dict) }
-        else { self = .null }
+        if container.decodeNil() {
+            self.value = NSNull()
+        } else if let bool = try? container.decode(Bool.self) {
+            self.value = bool
+        } else if let int = try? container.decode(Int.self) {
+            self.value = int
+        } else if let double = try? container.decode(Double.self) {
+            self.value = double
+        } else if let string = try? container.decode(String.self) {
+            self.value = string
+        } else if let array = try? container.decode([AnyCodableValue].self) {
+            self.value = array.map { $0.value }
+        } else if let dict = try? container.decode([String: AnyCodableValue].self) {
+            self.value = dict.mapValues { $0.value }
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Tipo não suportado")
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch self {
-        case .string(let s): try container.encode(s)
-        case .int(let i): try container.encode(i)
-        case .double(let d): try container.encode(d)
-        case .bool(let b): try container.encode(b)
-        case .dictionary(let dict): try container.encode(dict)
-        case .array(let arr): try container.encode(arr)
-        case .null: try container.encodeNil()
+        switch value {
+        case is NSNull:
+            try container.encodeNil()
+        case let bool as Bool:
+            try container.encode(bool)
+        case let int as Int:
+            try container.encode(int)
+        case let double as Double:
+            try container.encode(double)
+        case let string as String:
+            try container.encode(string)
+        case let array as [Any]:
+            let wrapped = array.map { AnyCodableValue($0) }
+            try container.encode(wrapped)
+        case let dict as [String: Any]:
+            let wrapped = dict.mapValues { AnyCodableValue($0) }
+            try container.encode(wrapped)
+        default:
+            try container.encode(String(describing: value))
         }
     }
 }

@@ -183,6 +183,14 @@ public final class CloudSyncService: ObservableObject {
         }
     }
 
+    public func recordLocalMutation(
+        entityName: String,
+        entityId: UUID,
+        operation: SyncOperation
+    ) {
+        recordLocalMutation(entityName: entityName, entityId: entityId, operation: operation, entity: Optional<String>.none)
+    }
+
     public func scheduleSync(delaySeconds: Double) {
         let isAuth = authService?.isAuthenticated ?? false
         guard isEnabled, isNetworkAvailable, isAuth else { return }
@@ -226,7 +234,6 @@ public final class CloudSyncService: ObservableObject {
         let payload = SyncPushPullRequest(
             clientId: clientId,
             sinceRevision: effectiveSinceRevision,
-            clientLastSyncRevision: effectiveSinceRevision,
             mutations: batchToSend.map { mut in
                 SyncMutationDTO(
                     mutationId: mut.id,
@@ -247,15 +254,10 @@ public final class CloudSyncService: ObservableObject {
             )
 
             let ackIds = response.acknowledgedMutationIds
-            let rejectedIds = response.rejectedMutations.map(\.mutationId)
-            let processedSet = Set(ackIds + rejectedIds)
-            outboxQueue.removeAll { processedSet.contains($0.id) }
+            let processedSet: Set<UUID> = Set(ackIds)
+            outboxQueue.removeAll { (item: LocalSyncMutation) in processedSet.contains(item.id) }
             saveOutboxQueue()
             pendingMutationsCount = outboxQueue.count
-
-            if !response.rejectedMutations.isEmpty {
-                print("FinSense CloudSync: \(response.rejectedMutations.count) mutations rejected by server.")
-            }
 
             if let deltas = response.deltas {
                 applyDeltasToStore(deltas, tombstones: response.tombstones ?? [], into: store)
