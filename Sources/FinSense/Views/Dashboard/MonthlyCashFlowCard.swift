@@ -12,9 +12,9 @@ public struct MonthlyCashFlowCard: View {
 
     public var body: some View {
         let income = store.monthlyIncome(for: selectedMonth)
-        let expense = store.monthlyExpense(for: selectedMonth)
+        let paid = store.monthlyPaidExpense(for: selectedMonth)
         let pending = store.monthlyPendingExpenses(for: selectedMonth)
-        let totalExpensesProjected = expense + pending
+        let totalExpensesProjected = store.monthlyExpense(for: selectedMonth)
         let projectedNet = income - totalExpensesProjected
 
         LiquidGlassCard(cornerRadius: 24, padding: 18) {
@@ -83,7 +83,7 @@ public struct MonthlyCashFlowCard: View {
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.secondary)
                         }
-                        Text(AppFormatters.currency(expense))
+                        Text(AppFormatters.currency(paid))
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundStyle(Color.primary)
                     }

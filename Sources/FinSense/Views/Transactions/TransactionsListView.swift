@@ -18,6 +18,7 @@ public struct TransactionsListView: View {
     @State private var selectedFilter: TransactionFilterTab = .all
     @State private var searchText: String = ""
     @State private var isAddSheetPresented: Bool = false
+    @State private var isMonthPickerPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
 
     public init(
@@ -41,12 +42,76 @@ public struct TransactionsListView: View {
                     LiquidNavigationBar(
                         syncService: syncService,
                         title: "Extrato",
-                        subtitle: AppFormatters.monthYear(store.selectedMonth),
+                        subtitle: nil,
                         trailingIcon: "plus"
                     ) {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         isAddSheetPresented = true
                     }
+
+                    // Seletor e Navegação de Mês
+                    HStack(spacing: 8) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            store.changeMonth(by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.secondary)
+                                .padding(7)
+                                .background(Circle().fill(Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            isMonthPickerPresented = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(AppFormatters.monthYear(store.selectedMonth))
+                                    .font(.system(size: 13, weight: .bold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundStyle(Color(hex: "#0284C7"))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            store.changeMonth(by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.secondary)
+                                .padding(7)
+                                .background(Circle().fill(Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        if !store.isInMonth(Date(), monthReference: store.selectedMonth) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                store.selectedMonth = Date()
+                            } label: {
+                                Text("Hoje")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#0284C7"))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.12)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
 
                     // Pílulas Deslizantes de Filtro
                     HStack(spacing: 8) {
@@ -160,6 +225,9 @@ public struct TransactionsListView: View {
             }
             .sheet(isPresented: $isAddSheetPresented) {
                 TransactionDetailSheet(store: store, syncService: syncService)
+            }
+            .sheet(isPresented: $isMonthPickerPresented) {
+                MonthPickerSheet(selectedMonth: $store.selectedMonth)
             }
             .sheet(item: $editingTransaction) { tx in
                 TransactionDetailSheet(store: store, syncService: syncService, editingTransaction: tx)

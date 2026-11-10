@@ -189,7 +189,11 @@ public final class FinancialDataStore: ObservableObject {
     @Published public var provisions: [CategoryProvision] = []
     @Published public var categoryQuotas: [CategoryQuotaRule] = []
 
-    @Published public var selectedMonth: Date = Date()
+    @Published public var selectedMonth: Date = Date() {
+        didSet {
+            ensureRecurringTransactionsMaterialized(upTo: endOfYear(for: selectedMonth))
+        }
+    }
     @Published public var dashboardPeriodMode: DashboardPeriodMode = .monthly
     @Published public var isHideBalancesEnabled: Bool = false
 
@@ -235,6 +239,7 @@ public final class FinancialDataStore: ObservableObject {
             self.contracts = decoded.contracts
             self.provisions = decoded.provisions ?? []
             self.categoryQuotas = decoded.categoryQuotas ?? []
+            ensureRecurringTransactionsMaterialized(upTo: endOfYear(for: selectedMonth))
         } else {
             self.categories = DefaultCategoriesCatalog.buildInitialCategories()
             self.accounts = []
@@ -1701,30 +1706,57 @@ public final class FinancialDataStore: ObservableObject {
         let month = calendar.component(.month, from: monthReference)
         let ymKey = year * 100 + month
 
+        // Group provisions by categoryId to guarantee exactly one active envelope per category
+        let grouped = Dictionary(grouping: provisions, by: { $0.categoryId })
         var result: [CategoryProvisionEnvelope] = []
-        for prov in provisions {
-            guard prov.yearMonthKey <= ymKey else { continue }
-            if prov.yearMonthKey < ymKey && !prov.repeatForFutureMonths { continue }
-            if let excluded = prov.excludedYearMonthKeys, excluded.contains(ymKey) { continue }
 
-            guard let cat = category(for: prov.categoryId) else { continue }
+        for (catId, catProvs) in grouped {
+            guard let cat = category(for: catId) else { continue }
+
+            var activeProvision: CategoryProvision? = nil
+            var isInherited = false
+
+            // 1. Exact match for this specific month
+            if let exact = catProvs.first(where: { $0.yearMonthKey == ymKey }) {
+                if !(exact.excludedYearMonthKeys?.contains(ymKey) ?? false) {
+                    activeProvision = exact
+                    isInherited = false
+                }
+            } else {
+                // 2. Most recent provision from an earlier month that repeats for future months
+                let applicable = catProvs
+                    .filter { prov in
+                        prov.yearMonthKey < ymKey &&
+                        prov.repeatForFutureMonths &&
+                        !(prov.excludedYearMonthKeys?.contains(ymKey) ?? false)
+                    }
+                    .max(by: { $0.yearMonthKey < $1.yearMonthKey })
+
+                if let prov = applicable {
+                    activeProvision = prov
+                    isInherited = true
+                }
+            }
+
+            guard let prov = activeProvision else { continue }
+
             let overrideAmount = prov.monthlyOverrides?[ymKey]
             let estimated = overrideAmount ?? prov.estimatedAmount
             let realized = transactionsForMonth(monthReference)
-                .filter { $0.categoryId == prov.categoryId && $0.type == .expense && $0.linkedQuotaId == nil }
+                .filter { $0.categoryId == catId && $0.type == .expense && $0.linkedQuotaId == nil }
                 .reduce(0.0) { $0 + $1.amount }
 
             let env = CategoryProvisionEnvelope(
                 category: cat,
                 provision: prov,
-                isInheritedFromPreviousMonth: prov.yearMonthKey < ymKey,
+                isInheritedFromPreviousMonth: isInherited,
                 estimatedAmount: estimated,
                 realizedExpense: realized,
                 isFreeBudgetLocalOverride: overrideAmount != nil
             )
             result.append(env)
         }
-        return result
+        return result.sorted { $0.category.name < $1.category.name }
     }
 
     public func totalCategoryProvisionsRemaining(for monthReference: Date) -> Double {
@@ -1775,11 +1807,37 @@ public final class FinancialDataStore: ObservableObject {
         let month = calendar.component(.month, from: monthReference)
         let ymKey = year * 100 + month
 
+        // Group quotas by seriesId to guarantee exactly one active envelope per quota series
+        let grouped = Dictionary(grouping: categoryQuotas, by: { $0.seriesId })
         var result: [CategoryQuotaEnvelope] = []
-        for rule in categoryQuotas {
-            guard rule.yearMonthKey <= ymKey else { continue }
-            if rule.yearMonthKey < ymKey && !rule.repeatForFutureMonths { continue }
-            if let excluded = rule.excludedYearMonthKeys, excluded.contains(ymKey) { continue }
+
+        for (_, seriesRules) in grouped {
+            var activeRule: CategoryQuotaRule? = nil
+            var isInherited = false
+
+            // 1. Exact match for this month
+            if let exact = seriesRules.first(where: { $0.yearMonthKey == ymKey }) {
+                if !(exact.excludedYearMonthKeys?.contains(ymKey) ?? false) {
+                    activeRule = exact
+                    isInherited = false
+                }
+            } else {
+                // 2. Most recent rule from an earlier month that repeats for future months
+                let applicable = seriesRules
+                    .filter { rule in
+                        rule.yearMonthKey < ymKey &&
+                        rule.repeatForFutureMonths &&
+                        !(rule.excludedYearMonthKeys?.contains(ymKey) ?? false)
+                    }
+                    .max(by: { $0.yearMonthKey < $1.yearMonthKey })
+
+                if let rule = applicable {
+                    activeRule = rule
+                    isInherited = true
+                }
+            }
+
+            guard let rule = activeRule else { continue }
 
             let override = rule.monthlyOverrides?[ymKey]
             let planned = override?.plannedQuantity ?? rule.plannedQuantity
@@ -1799,12 +1857,12 @@ public final class FinancialDataStore: ObservableObject {
                 estimatedUnitPrice: unitPrice,
                 realizedExpense: realized,
                 repeatForFutureMonths: rule.repeatForFutureMonths,
-                isInheritedFromPreviousMonth: rule.yearMonthKey < ymKey,
+                isInheritedFromPreviousMonth: isInherited,
                 isLocalMonthOverride: override != nil
             )
             result.append(env)
         }
-        return result
+        return result.sorted { $0.name < $1.name }
     }
 
     public func totalQuotasRemaining(for monthReference: Date) -> Double {
@@ -2040,12 +2098,14 @@ public final class FinancialDataStore: ObservableObject {
 
     public func monthlyExpense(for month: Date) -> Double {
         transactionsForMonth(month)
-            .filter { $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
+            .filter { $0.type == .expense && !$0.ignoreInConsolidated }
             .reduce(0.0) { $0 + $1.amount }
     }
 
     public func monthlyPaidExpense(for month: Date) -> Double {
-        monthlyExpense(for: month)
+        transactionsForMonth(month)
+            .filter { $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + $1.amount }
     }
 
     public func monthlyPendingExpenses(for month: Date) -> Double {
@@ -2080,12 +2140,13 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func annualExpense(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
+        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && !$0.ignoreInConsolidated }
             .reduce(0.0) { $0 + $1.amount }
     }
 
     public func annualPaidExpense(for yearReference: Date) -> Double {
-        annualExpense(for: yearReference)
+        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + $1.amount }
     }
 
     public func annualPendingExpense(for yearReference: Date) -> Double {
@@ -2109,7 +2170,7 @@ public final class FinancialDataStore: ObservableObject {
 
     public func financialHealthScore(for month: Date) -> Int {
         let income = monthlyIncome(for: month)
-        let expense = monthlyExpense(for: month) + monthlyPendingExpenses(for: month)
+        let expense = monthlyExpense(for: month)
         guard income > 0 else {
             return expense > 0 ? 30 : 60
         }

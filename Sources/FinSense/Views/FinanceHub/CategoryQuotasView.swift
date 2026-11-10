@@ -4,6 +4,7 @@ import SwiftUI
 public struct CategoryQuotasView: View {
     @ObservedObject var store: FinancialDataStore
     @State private var isAddQuotaPresented: Bool = false
+    @State private var isMonthPickerPresented: Bool = false
     @State private var redeemingEnvelope: CategoryQuotaEnvelope? = nil
 
     public init(store: FinancialDataStore) {
@@ -19,6 +20,71 @@ public struct CategoryQuotasView: View {
 
             ScrollView {
                 VStack(spacing: 14) {
+                    // Seletor e Navegação de Mês
+                    HStack(spacing: 8) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            store.changeMonth(by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.secondary)
+                                .padding(7)
+                                .background(Circle().fill(Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            isMonthPickerPresented = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 12, weight: .semibold))
+                                Text(AppFormatters.monthYear(store.selectedMonth))
+                                    .font(.system(size: 13, weight: .bold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundStyle(Color(hex: "#0284C7"))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            store.changeMonth(by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.secondary)
+                                .padding(7)
+                                .background(Circle().fill(Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        if !store.isInMonth(Date(), monthReference: store.selectedMonth) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                store.selectedMonth = Date()
+                            } label: {
+                                Text("Hoje")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#0284C7"))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.12)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+
                     if envelopes.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "shippingbox.fill")
@@ -124,6 +190,9 @@ public struct CategoryQuotasView: View {
         }
         .sheet(isPresented: $isAddQuotaPresented) {
             QuotaEditorSheet(store: store)
+        }
+        .sheet(isPresented: $isMonthPickerPresented) {
+            MonthPickerSheet(selectedMonth: $store.selectedMonth)
         }
         .sheet(item: $redeemingEnvelope) { env in
             RedeemQuotaSheet(store: store, envelope: env)
