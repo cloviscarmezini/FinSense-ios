@@ -2401,13 +2401,14 @@ public final class FinancialDataStore: ObservableObject {
 
         var items: [DebtLineItem] = []
 
+        let periodExpenseSectionTitle = isAnnual ? "Despesas do Ano" : "Despesas do Mês"
         for tx in currentPeriodUnpaid {
             items.append(
                 DebtLineItem(
                     id: tx.id,
                     title: tx.name,
-                    subtitle: "Transação pendente (\(AppFormatters.shortDate(tx.date)))",
-                    section: "Transações Atuais",
+                    subtitle: "Despesa pendente (\(AppFormatters.shortDate(tx.date)))",
+                    section: periodExpenseSectionTitle,
                     nominalAmount: tx.amount,
                     projectedPayoffAmount: tx.amount,
                     iconSymbol: "calendar.badge.exclamationmark",
@@ -2422,7 +2423,7 @@ public final class FinancialDataStore: ObservableObject {
                     id: tx.id,
                     title: tx.name,
                     subtitle: "Despesa futura para \(AppFormatters.shortDate(tx.date))",
-                    section: "Transações Futuras",
+                    section: periodExpenseSectionTitle,
                     nominalAmount: tx.amount,
                     projectedPayoffAmount: tx.amount,
                     iconSymbol: "clock.arrow.circlepath",
@@ -2487,8 +2488,9 @@ public final class FinancialDataStore: ObservableObject {
             )
         }
 
-        let totalNominal = currentMonthUnpaidSum + futureRegularSum + debtsSum + loansNominalSum + financingsNominalSum
-        let totalProjected = currentMonthUnpaidSum + futureRegularSum + debtsSum + loansProjectedSum + financingsProjectedSum
+        let periodExpensesSum = isAnnual ? annualExpense(for: referenceDate) : monthlyExpense(for: referenceDate)
+        let totalNominal = periodExpensesSum + debtsSum + loansNominalSum + financingsNominalSum
+        let totalProjected = periodExpensesSum + debtsSum + loansProjectedSum + financingsProjectedSum
 
         return ComprehensiveDebtSummary(
             currentMonthUnpaidTransactions: currentPeriodUnpaid,

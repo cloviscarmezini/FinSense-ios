@@ -7,6 +7,7 @@ public final class BackendAPIClient {
 
     private let session: URLSession
     public var bearerToken: String? = nil
+    public var tokenRenewer: (() async -> String?)? = nil
 
     public init(session: URLSession = .shared) {
         self.session = session
@@ -68,6 +69,40 @@ public final class BackendAPIClient {
         return decoder
     }
 
+    public func refreshTokens(
+        baseURL: String,
+        refreshToken: String
+    ) async throws -> AuthResponseDTO {
+        guard let url = URL(string: "\(baseURL)/auth/refresh") else {
+            throw URLError(.badURL)
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.applyDeviceHeaders(to: &req)
+        req.timeoutInterval = 15.0
+
+        let bodyPayload = RefreshTokenRequestDTO(
+            refreshToken: refreshToken,
+            deviceId: Self.persistentDeviceId,
+            platform: "iOS",
+            appVersion: "1.0.0",
+            deviceName: UIDevice.current.name
+        )
+        let encoder = JSONEncoder()
+        req.httpBody = try encoder.encode(bodyPayload)
+
+        let (data, response) = try await session.data(for: req)
+        guard let httpRes = response as? HTTPURLResponse, (200...299).contains(httpRes.statusCode) else {
+            throw URLError(.userAuthenticationRequired)
+        }
+
+        let decoder = Self.makeFlexibleDateDecoder()
+        return try decoder.decode(AuthResponseDTO.self, from: data)
+    }
+
     public func pushPull(
         baseURL: String,
         requestPayload: SyncPushPullRequest,
@@ -98,6 +133,18 @@ public final class BackendAPIClient {
             throw URLError(.badServerResponse)
         }
 
+        if (httpRes.statusCode == 401 || httpRes.statusCode == 403), let renewer = tokenRenewer {
+            if let newToken = await renewer() {
+                var retryReq = req
+                retryReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                let (retryData, retryResponse) = try await session.data(for: retryReq)
+                if let retryHttp = retryResponse as? HTTPURLResponse, retryHttp.statusCode == 200 {
+                    let decoder = Self.makeFlexibleDateDecoder()
+                    return try decoder.decode(SyncPushPullResponse.self, from: retryData)
+                }
+            }
+        }
+
         guard httpRes.statusCode == 200 else {
             throw URLError(httpRes.statusCode == 401 || httpRes.statusCode == 403 ? .userAuthenticationRequired : .badServerResponse)
         }
@@ -122,8 +169,24 @@ public final class BackendAPIClient {
         req.timeoutInterval = 15.0
 
         let (data, response) = try await session.data(for: req)
-        guard let httpRes = response as? HTTPURLResponse, httpRes.statusCode == 200 else {
+        guard let httpRes = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+
+        if (httpRes.statusCode == 401 || httpRes.statusCode == 403) && !endpoint.contains("/auth/"), let renewer = tokenRenewer {
+            if let newToken = await renewer() {
+                var retryReq = req
+                retryReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                let (retryData, retryResponse) = try await session.data(for: retryReq)
+                if let retryHttp = retryResponse as? HTTPURLResponse, retryHttp.statusCode == 200 {
+                    let decoder = Self.makeFlexibleDateDecoder()
+                    return try decoder.decode(T.self, from: retryData)
+                }
+            }
+        }
+
+        guard httpRes.statusCode == 200 else {
+            throw URLError(httpRes.statusCode == 401 || httpRes.statusCode == 403 ? .userAuthenticationRequired : .badServerResponse)
         }
 
         let decoder = Self.makeFlexibleDateDecoder()
@@ -156,6 +219,18 @@ public final class BackendAPIClient {
         let (data, response) = try await session.data(for: req)
         guard let httpRes = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
+        }
+
+        if (httpRes.statusCode == 401 || httpRes.statusCode == 403) && !endpoint.contains("/auth/"), let renewer = tokenRenewer {
+            if let newToken = await renewer() {
+                var retryReq = req
+                retryReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+                let (retryData, retryResponse) = try await session.data(for: retryReq)
+                if let retryHttp = retryResponse as? HTTPURLResponse, (200...299).contains(retryHttp.statusCode) {
+                    let decoder = Self.makeFlexibleDateDecoder()
+                    return try decoder.decode(Res.self, from: retryData)
+                }
+            }
         }
 
         guard (200...299).contains(httpRes.statusCode) else {

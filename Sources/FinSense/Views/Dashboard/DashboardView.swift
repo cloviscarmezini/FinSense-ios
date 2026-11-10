@@ -566,23 +566,24 @@ public struct DashboardView: View {
             }
             .padding(.horizontal, 20)
 
-            // Carrossel dos 5 Pilares de Passivos
+            // Carrossel dos Pilares de Passivos
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    debtPillarMiniCard(
-                        title: isAnnual ? "Pendentes no Ano" : "Transações Atuais",
-                        subtitle: "\(debtSummary.currentMonthUnpaidTransactions.count) pendente(s)",
-                        amount: debtSummary.currentMonthUnpaidTotal,
-                        icon: "calendar.badge.exclamationmark",
-                        colorHex: "#F59E0B"
-                    )
+                    let periodExpenseTitle = isAnnual ? "Despesas do Ano" : "Despesas do Mês"
+                    let periodExpenseAmount = isAnnual
+                        ? store.annualExpense(for: store.selectedMonth)
+                        : store.monthlyExpense(for: store.selectedMonth)
+                    let pendingCount = debtSummary.currentMonthUnpaidTransactions.count
+                    let periodSubtitle = isAnnual
+                        ? "Total de despesas do ano"
+                        : (pendingCount > 0 ? "\(pendingCount) pendente(s)" : "Total de despesas do mês")
 
                     debtPillarMiniCard(
-                        title: "Transações Futuras",
-                        subtitle: "\(debtSummary.futureUnpaidRegularTransactions.count) agendada(s)",
-                        amount: debtSummary.futureRegularExpensesTotal,
-                        icon: "clock.arrow.circlepath",
-                        colorHex: "#3B82F6"
+                        title: periodExpenseTitle,
+                        subtitle: periodSubtitle,
+                        amount: periodExpenseAmount,
+                        icon: "creditcard.fill",
+                        colorHex: "#F59E0B"
                     )
 
                     debtPillarMiniCard(

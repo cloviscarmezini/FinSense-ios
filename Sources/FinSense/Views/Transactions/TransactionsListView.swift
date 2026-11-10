@@ -17,6 +17,7 @@ public struct TransactionsListView: View {
 
     @State private var selectedFilter: TransactionFilterTab = .all
     @State private var searchText: String = ""
+    @State private var isSearchVisible: Bool = false
     @State private var isAddSheetPresented: Bool = false
     @State private var isMonthPickerPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
@@ -113,6 +114,9 @@ public struct TransactionsListView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    // Cards de Resumo Rápido do Filtro
+                    filterSummaryCards
+
                     // Pílulas Deslizantes de Filtro
                     HStack(spacing: 8) {
                         ForEach(TransactionFilterTab.allCases) { tab in
@@ -143,49 +147,36 @@ public struct TransactionsListView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    // Campo de Busca
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.secondary)
+                    // Campo de Busca (revelado ao puxar a tela para baixo)
+                    if isSearchVisible || !searchText.isEmpty {
+                        searchBarView
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
-                        TextField("Buscar por nome, conta ou valor...", text: $searchText)
-                            .font(.system(size: 14))
+                    // Lista de Transações com detecção de scroll
+                    ScrollView {
+                        // Marcador para detecção de scroll down
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ScrollOffsetPreferenceKey.self,
+                                value: proxy.frame(in: .named("extratoScroll")).minY
+                            )
+                        }
+                        .frame(height: 0)
 
-                        if !searchText.isEmpty {
-                            Button {
-                                searchText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 14))
+                        if filteredGroupedDays.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "tray.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(Color.secondary.opacity(0.4))
+                                Text("Nenhuma transação encontrada")
+                                    .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Color.secondary)
                             }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(.ultraThinMaterial)
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.15), lineWidth: 0.8))
-                    )
-                    .padding(.horizontal, 20)
-
-                    // Lista de Transações Agrupadas por Dia
-                    if filteredGroupedDays.isEmpty {
-                        VStack(spacing: 12) {
-                            Spacer()
-                            Image(systemName: "tray.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(Color.secondary.opacity(0.4))
-                            Text("Nenhuma transação encontrada")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.secondary)
-                            Spacer()
-                        }
-                    } else {
-                        ScrollView {
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 60)
+                            .padding(.bottom, 72)
+                        } else {
                             LazyVStack(spacing: 16) {
                                 ForEach(filteredGroupedDays, id: \.date) { group in
                                     VStack(alignment: .leading, spacing: 8) {
@@ -221,6 +212,18 @@ public struct TransactionsListView: View {
                             .padding(.bottom, 72)
                         }
                     }
+                    .coordinateSpace(name: "extratoScroll")
+                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+                        if offset > 25 && !isSearchVisible {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isSearchVisible = true
+                            }
+                        } else if offset < -60 && isSearchVisible && searchText.isEmpty {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isSearchVisible = false
+                            }
+                        }
+                    }
                 }
             }
             .sheet(isPresented: $isAddSheetPresented) {
@@ -232,6 +235,107 @@ public struct TransactionsListView: View {
             .sheet(item: $editingTransaction) { tx in
                 TransactionDetailSheet(store: store, syncService: syncService, editingTransaction: tx)
             }
+        }
+    }
+
+    // MARK: - Barra de Busca Retrátil
+    private var searchBarView: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.secondary)
+
+            TextField("Buscar por nome, conta ou valor...", text: $searchText)
+                .font(.system(size: 14))
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.secondary)
+                }
+                .buttonStyle(.plain)
+            } else if isSearchVisible {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isSearchVisible = false
+                    }
+                } label: {
+                    Text("Cancelar")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#0284C7"))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.15), lineWidth: 0.8))
+        )
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Cards Resumo do Filtro
+    private var filterSummaryCards: some View {
+        let (leftTitle, leftAmount, leftColor, leftIcon, rightTitle, rightAmount, rightColor, rightIcon): (String, Double, String, String, String, Double, String, String) = {
+            switch selectedFilter {
+            case .all:
+                let net = store.monthlyNetBalance(for: store.selectedMonth)
+                return (
+                    "Balanço atual", store.totalCheckingBalanceNow, "#0284C7", "building.columns.fill",
+                    "Balanço do mês", net, net >= 0 ? "#10B981" : "#EF4444", "chart.line.uptrend.xyaxis"
+                )
+            case .expenses:
+                return (
+                    "Total pago", store.monthlyPaidExpense(for: store.selectedMonth), "#EF4444", "creditcard.fill",
+                    "Total pendente", store.monthlyPendingExpenses(for: store.selectedMonth), "#F59E0B", "clock.fill"
+                )
+            case .incomes:
+                return (
+                    "Total de receitas", store.monthlyIncome(for: store.selectedMonth), "#10B981", "arrow.down.left.circle.fill",
+                    "Total Recebido", store.monthlyReceivedIncome(for: store.selectedMonth), "#059669", "checkmark.circle.fill"
+                )
+            case .pending:
+                return (
+                    "Despesas pendentes", store.monthlyPendingExpenses(for: store.selectedMonth), "#EF4444", "exclamationmark.circle.fill",
+                    "Receitas pendentes", store.monthlyPendingIncome(for: store.selectedMonth), "#10B981", "hourglass"
+                )
+            }
+        }()
+
+        return HStack(spacing: 12) {
+            summaryMiniCard(title: leftTitle, amount: leftAmount, colorHex: leftColor, icon: leftIcon)
+            summaryMiniCard(title: rightTitle, amount: rightAmount, colorHex: rightColor, icon: rightIcon)
+        }
+        .padding(.horizontal, 20)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedFilter)
+    }
+
+    private func summaryMiniCard(title: String, amount: Double, colorHex: String, icon: String) -> some View {
+        LiquidGlassCard(cornerRadius: 16, padding: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: colorHex))
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.secondary)
+                        .lineLimit(1)
+                }
+
+                Text(AppFormatters.currency(amount))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -339,5 +443,13 @@ public struct TransactionRow: View {
             }
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - PreferenceKey para detecção de Scroll Down
+private struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

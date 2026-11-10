@@ -246,11 +246,14 @@ public final class CloudSyncService: ObservableObject {
             }
         )
 
+        // Garante token renovado antes da sincronização
+        let currentToken = await authService?.ensureFreshToken(baseURL: baseURLString) ?? authService?.accessToken
+
         do {
             let response = try await BackendAPIClient.shared.pushPull(
                 baseURL: baseURLString,
                 requestPayload: payload,
-                token: authService?.accessToken
+                token: currentToken
             )
 
             let ackIds = response.acknowledgedMutationIds
@@ -286,7 +289,13 @@ public final class CloudSyncService: ObservableObject {
                 scheduleSync(delaySeconds: 0.5)
             }
         } catch let err as URLError where err.code == .userAuthenticationRequired {
-            syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
+            // Tenta renovar o token e reagendar sincronização imediatamente
+            if let auth = authService, await auth.renewTokens(baseURL: baseURLString) {
+                print("⚡️ [CloudSyncService] Token renovado após 401. Reagendando sincronização...")
+                scheduleSync(delaySeconds: 0.3)
+            } else {
+                syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
+            }
         } catch {
             // Degradação suave: servidor fora do ar ou timeout não trava o app
             syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Servidor indisponível")
