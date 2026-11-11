@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E1A0F1112D9E000100000006 /* SplashScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000005 /* SplashScreenView.swift */; };
 		E1A0F1112D9E000100000004 /* BRLCurrencyTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */; };
 		E1A0F1112D9E000100000002 /* IncomeCommitmentDonutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */; };
 		02464C29ED59046CDAA9B00A /* FinancialHealthCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E69430ED5EE6EEC00816E23 /* FinancialHealthCard.swift */; };
@@ -66,6 +67,7 @@
 		303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = InvestmentsManagerView.swift; path = Sources/FinSense/Views/FinanceHub/InvestmentsManagerView.swift; sourceTree = "<group>"; };
 		3498293DFE58F339A6802E3C /* SettingsMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsMainView.swift; path = Sources/FinSense/Views/Settings/SettingsMainView.swift; sourceTree = "<group>"; };
 		504A34A7C94554496B28920A /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfiguration.swift; path = Sources/FinSense/Services/AppConfiguration.swift; sourceTree = "<group>"; };
+		E1A0F1112D9E000100000005 /* SplashScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SplashScreenView.swift; path = Sources/FinSense/Views/Navigation/SplashScreenView.swift; sourceTree = "<group>"; };
 		E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BRLCurrencyTextField.swift; path = Sources/FinSense/DesignSystem/BRLCurrencyTextField.swift; sourceTree = "<group>"; };
 		5C44B1641575E01E2D8C58CD /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DashboardView.swift; path = Sources/FinSense/Views/Dashboard/DashboardView.swift; sourceTree = "<group>"; };
 		E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = IncomeCommitmentDonutCard.swift; path = Sources/FinSense/Views/Dashboard/IncomeCommitmentDonutCard.swift; sourceTree = "<group>"; };
@@ -175,6 +177,7 @@
 				303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */,
 				959E13AA8B7FDEFE014EB0DD /* ProvisionsView.swift */,
 				B2CDDD7E89175138A8C48334 /* LiquidNavigationBar.swift */,
+				E1A0F1112D9E000100000005 /* SplashScreenView.swift */,
 				1CD91C4BCFD2001DA259D64E /* LiquidTabBar.swift */,
 				6D5125991385FDF761F49476 /* AuthSheetView.swift */,
 				204D64B60719735C3CBB3D47 /* CloudSyncSettingsView.swift */,
@@ -293,6 +296,7 @@
 				CC07090C8DBC758FBBCC415D /* InvestmentsManagerView.swift in Sources */,
 				4CF72B6C7D8E43621FB9D23E /* ProvisionsView.swift in Sources */,
 				9E21EAB628C837A8735ED137 /* LiquidNavigationBar.swift in Sources */,
+				E1A0F1112D9E000100000006 /* SplashScreenView.swift in Sources */,
 				583C45E64F9B7501DD79FC4E /* LiquidTabBar.swift in Sources */,
 				2460B1116BF541731A0FE909 /* AuthSheetView.swift in Sources */,
 				87DA8F8FFBB938442AD0D0CA /* CloudSyncSettingsView.swift in Sources */,
