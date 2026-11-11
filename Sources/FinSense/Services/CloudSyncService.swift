@@ -15,15 +15,13 @@ public final class CloudSyncService: ObservableObject {
     @AppStorage("cloud_sync_enabled") public var isEnabled: Bool = false {
         didSet {
             evaluateInitialStatus()
-            if isEnabled && (authService?.isAuthenticated ?? false) {
-                scheduleSync(delaySeconds: 0.5)
-            }
         }
     }
     @AppStorage("cloud_sync_base_url") public var baseURLString: String = AppConfiguration.shared.apiBaseURL
     @AppStorage("cloud_sync_client_id") public var clientId: String = UUID().uuidString
     @AppStorage("cloud_sync_last_revision") public var lastServerRevision: Int = 0
     @AppStorage("cloud_sync_last_user_id") public var lastSyncedUserId: String = ""
+    @AppStorage("cloud_sync_initial_seeded") private var hasSeededInitialData: Bool = false
 
     public var canSync: Bool {
         isEnabled && (authService?.isAuthenticated ?? false)
@@ -35,20 +33,21 @@ public final class CloudSyncService: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private var isNetworkAvailable: Bool = true
     private var authCancellable: AnyCancellable? = nil
+    private var lastAppEntrySyncDate: Date? = nil
+
     public weak var store: FinancialDataStore?
     public weak var authService: AuthService? {
         didSet {
+            guard authService !== oldValue else { return }
+            authCancellable?.cancel()
             authCancellable = authService?.$isAuthenticated
+                .removeDuplicates()
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] isAuth in
                     guard let self else { return }
                     self.handleAuthChange(isAuth: isAuth)
                 }
-            if authService?.isAuthenticated ?? false {
-                handleAuthChange(isAuth: true)
-            } else {
-                evaluateInitialStatus()
-            }
+            evaluateInitialStatus()
         }
     }
 
@@ -65,7 +64,7 @@ public final class CloudSyncService: ObservableObject {
                 isEnabled = true
             }
             evaluateInitialStatus()
-            scheduleSync(delaySeconds: 0.3)
+            scheduleSync(delaySeconds: 0.5)
         } else {
             lastSyncedUserId = ""
             evaluateInitialStatus()
@@ -130,9 +129,7 @@ public final class CloudSyncService: ObservableObject {
                 guard let self else { return }
                 self.isNetworkAvailable = (path.status == .satisfied)
                 let isAuth = self.authService?.isAuthenticated ?? false
-                if self.isNetworkAvailable && self.isEnabled && isAuth {
-                    self.scheduleSync(delaySeconds: 1.0)
-                } else if !self.isNetworkAvailable && self.isEnabled && isAuth {
+                if !self.isNetworkAvailable && self.isEnabled && isAuth {
                     self.syncStatus = .outOfSync(
                         pendingCount: self.outboxQueue.count,
                         reason: "Sem conexão com a internet"
@@ -142,6 +139,16 @@ public final class CloudSyncService: ObservableObject {
         }
         let queue = DispatchQueue(label: "br.com.finsense.ios.syncNetworkMonitor")
         networkMonitor.start(queue: queue)
+    }
+
+    /// Sincronização disparada exclusivamente ao entrar no aplicativo (com throttle de 30s)
+    public func syncOnAppEntry() {
+        guard canSync else { return }
+        if let last = lastAppEntrySyncDate, Date().timeIntervalSince(last) < 30.0 {
+            return
+        }
+        lastAppEntrySyncDate = Date()
+        scheduleSync(delaySeconds: 0.6)
     }
 
     public func recordLocalMutation<T: Codable>(
@@ -258,6 +265,7 @@ public final class CloudSyncService: ObservableObject {
 
             let ackIds = response.acknowledgedMutationIds
             let processedSet: Set<UUID> = Set(ackIds)
+            let previousOutboxCount = outboxQueue.count
             outboxQueue.removeAll { (item: LocalSyncMutation) in processedSet.contains(item.id) }
             saveOutboxQueue()
             pendingMutationsCount = outboxQueue.count
@@ -272,8 +280,9 @@ public final class CloudSyncService: ObservableObject {
             let serverIsEmpty = response.latestRevision == 0 && (response.serverChanges?.isEmpty ?? true) && (response.deltas?.isEmpty ?? true)
             let hasLocalData = !store.transactions.isEmpty || !store.accounts.isEmpty || !store.categories.isEmpty || !store.contracts.isEmpty || !store.investments.isEmpty || !store.debts.isEmpty || !store.provisions.isEmpty || !store.categoryQuotas.isEmpty
 
-            if serverIsEmpty && hasLocalData && outboxQueue.isEmpty {
-                print("⚡️ [FinSense-iOS] Servidor vazio detectado com dados locais: realizando auto-seed de envio...")
+            if serverIsEmpty && hasLocalData && outboxQueue.isEmpty && lastServerRevision == 0 && !hasSeededInitialData {
+                print("⚡️ [FinSense-iOS] Servidor vazio detectado com dados locais: realizando auto-seed de envio inicial...")
+                hasSeededInitialData = true
                 enqueueAllLocalData()
             }
 
@@ -284,15 +293,18 @@ public final class CloudSyncService: ObservableObject {
             if outboxQueue.isEmpty {
                 syncStatus = .synced(lastSync: now)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else if outboxQueue.count < previousOutboxCount {
+                // Houve redução na fila: continua para descarregar o lote seguinte
+                scheduleSync(delaySeconds: 1.0)
             } else {
-                syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sincronizando lote seguinte...")
-                scheduleSync(delaySeconds: 0.5)
+                // Nenhuma mutação foi confirmada neste ciclo: não entra em loop, aguarda próxima ação
+                syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
             }
         } catch let err as URLError where err.code == .userAuthenticationRequired {
-            // Tenta renovar o token e reagendar sincronização imediatamente
+            // Tenta renovar o token e reagendar uma única tentativa
             if let auth = authService, await auth.renewTokens(baseURL: baseURLString) {
-                print("⚡️ [CloudSyncService] Token renovado após 401. Reagendando sincronização...")
-                scheduleSync(delaySeconds: 0.3)
+                print("⚡️ [CloudSyncService] Token renovado após 401. Reagendando tentativa...")
+                scheduleSync(delaySeconds: 1.0)
             } else {
                 syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
             }

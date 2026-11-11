@@ -2,6 +2,7 @@
 import SwiftUI
 
 public struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var store = FinancialDataStore()
     @StateObject private var authService: AuthService
     @StateObject private var syncService: CloudSyncService
@@ -74,7 +75,12 @@ public struct ContentView: View {
             syncService.authService = authService
             if authService.isAuthenticated {
                 syncService.isEnabled = true
-                syncService.scheduleSync(delaySeconds: 0.5)
+                syncService.syncOnAppEntry()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && authService.isAuthenticated {
+                syncService.syncOnAppEntry()
             }
         }
     }
