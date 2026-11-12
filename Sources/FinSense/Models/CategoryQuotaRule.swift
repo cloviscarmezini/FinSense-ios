@@ -169,6 +169,9 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
     public let isLocalMonthOverride: Bool
 
     public var progressRatio: Double {
+        if quotaType == .investment && totalEstimatedAmount > 0 {
+            return min(1.0, max(0.0, realizedExpense / totalEstimatedAmount))
+        }
         guard plannedQuantity > 0 else { return 0.0 }
         return min(1.0, max(0.0, Double(consumedUnits) / Double(plannedQuantity)))
     }
@@ -188,14 +191,16 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
 
     public var statusTitle: String {
         if quotaType == .investment {
-            guard plannedQuantity > 0 else { return "Pendente" }
-            if consumedUnits > plannedQuantity {
+            let target = totalEstimatedAmount > 0 ? totalEstimatedAmount : Double(plannedQuantity) * estimatedUnitPrice
+            guard target > 0 else { return "Pendente" }
+            let ratio = realizedExpense / target
+            if ratio > 1.0 + 0.001 {
                 return "Superado"
-            } else if consumedUnits == plannedQuantity {
+            } else if ratio >= 1.0 - 0.001 {
                 return "Meta Atingida"
-            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+            } else if ratio >= 0.8 - 0.001 {
                 return "Quase lá"
-            } else if consumedUnits > 0 {
+            } else if realizedExpense > 0 {
                 return "Em andamento"
             } else {
                 return "Pendente"
@@ -206,12 +211,14 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
 
     public var statusColorHex: String {
         if quotaType == .investment {
-            guard plannedQuantity > 0 else { return "#94A3B8" }
-            if consumedUnits >= plannedQuantity {
+            let target = totalEstimatedAmount > 0 ? totalEstimatedAmount : Double(plannedQuantity) * estimatedUnitPrice
+            guard target > 0 else { return "#94A3B8" }
+            let ratio = realizedExpense / target
+            if ratio >= 1.0 - 0.001 {
                 return "#10B981"
-            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+            } else if ratio >= 0.8 - 0.001 {
                 return "#0284C7"
-            } else if consumedUnits > 0 {
+            } else if realizedExpense > 0 {
                 return "#0284C7"
             } else {
                 return "#94A3B8"
@@ -222,14 +229,16 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
 
     public var statusIconSymbol: String {
         if quotaType == .investment {
-            guard plannedQuantity > 0 else { return "circle" }
-            if consumedUnits > plannedQuantity {
+            let target = totalEstimatedAmount > 0 ? totalEstimatedAmount : Double(plannedQuantity) * estimatedUnitPrice
+            guard target > 0 else { return "circle" }
+            let ratio = realizedExpense / target
+            if ratio > 1.0 + 0.001 {
                 return "star.fill"
-            } else if consumedUnits == plannedQuantity {
+            } else if ratio >= 1.0 - 0.001 {
                 return "checkmark.circle.fill"
-            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+            } else if ratio >= 0.8 - 0.001 {
                 return "chart.line.uptrend.xyaxis"
-            } else if consumedUnits > 0 {
+            } else if realizedExpense > 0 {
                 return "arrow.triangle.2.circlepath"
             } else {
                 return "circle"

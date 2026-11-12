@@ -132,13 +132,30 @@ public struct CategoryQuotasView: View {
                                                         .foregroundStyle(Color(hex: "#10B981"))
                                                 }
                                             }
-                                            Text(isInvestment
-                                                 ? (env.consumedUnits >= env.plannedQuantity && env.plannedQuantity > 0
-                                                    ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • Meta concluída"
-                                                    : "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes")
-                                                 : "\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
-                                                .font(.system(size: 11))
-                                                .foregroundStyle(Color.secondary)
+                                            if isInvestment {
+                                                let target = env.totalEstimatedAmount
+                                                let realized = env.realizedExpense
+                                                if realized >= target && target > 0 {
+                                                    if realized > target + 0.01 {
+                                                        Text("\(AppFormatters.currency(realized)) aportados (Meta: \(AppFormatters.currency(target))) • Meta superada")
+                                                            .font(.system(size: 11))
+                                                            .foregroundStyle(Color.secondary)
+                                                    } else {
+                                                        Text("\(AppFormatters.currency(realized)) de \(AppFormatters.currency(target)) • Meta concluída")
+                                                            .font(.system(size: 11))
+                                                            .foregroundStyle(Color.secondary)
+                                                    }
+                                                } else {
+                                                    let remaining = max(0.0, target - realized)
+                                                    Text("\(AppFormatters.currency(realized)) de \(AppFormatters.currency(target)) • \(AppFormatters.currency(remaining)) restantes")
+                                                        .font(.system(size: 11))
+                                                        .foregroundStyle(Color.secondary)
+                                                }
+                                            } else {
+                                                Text("\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(Color.secondary)
+                                            }
                                         }
 
                                         Spacer()
@@ -261,7 +278,7 @@ public struct QuotaEditorSheet: View {
     @State private var name: String = ""
     @State private var selectedCategoryId: UUID = UUID()
     @State private var plannedQuantity: Int = 4
-    @State private var unitPriceString: String = AppFormatters.currency(50.0)
+    @State private var unitPriceString: String = ""
     @State private var repeatForFuture: Bool = true
 
     public var body: some View {
@@ -287,21 +304,12 @@ public struct QuotaEditorSheet: View {
                                     Text("\(inv.name) (\(inv.groupName))").tag(inv.id)
                                 }
                             }
-                            .onChange(of: selectedInvestmentId) { _, newId in
-                                if let inv = store.investments.first(where: { $0.id == newId }) {
-                                    if name.isEmpty || store.investments.contains(where: { "Aporte \($0.name)" == name || $0.name == name }) {
-                                        name = "Aporte \(inv.name)"
-                                    }
-                                }
-                            }
                         }
-
-                        TextField("Identificação (ex: Aporte Tesouro Direto)", text: $name)
                     }
 
                     Section("Planejamento de Aporte") {
                         HStack {
-                            Text("Valor a Guardar / Investir")
+                            Text("Valor a Guardar")
                             Spacer()
                             BRLCurrencyTextField("R$ 0,00", text: $unitPriceString)
                         }
@@ -347,9 +355,7 @@ public struct QuotaEditorSheet: View {
 
                         if quotaType == .investment {
                             let inv = store.investments.first(where: { $0.id == selectedInvestmentId })
-                            let finalName = name.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? "Aporte \(inv?.name ?? "Investimento")"
-                                : name
+                            let finalName = "Aporte \(inv?.name ?? "Investimento")"
                             let fallbackCat = store.investmentDepositCategoryId()
 
                             store.createQuota(
@@ -380,7 +386,9 @@ public struct QuotaEditorSheet: View {
                         }
                         dismiss()
                     }
-                    .disabled(quotaType == .investment ? (store.investments.isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0) : name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(quotaType == .investment
+                              ? (store.investments.isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0)
+                              : (name.trimmingCharacters(in: .whitespaces).isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0))
                 }
             }
             .onAppear {
@@ -389,9 +397,6 @@ public struct QuotaEditorSheet: View {
                 }
                 if let firstInv = store.investments.first {
                     selectedInvestmentId = firstInv.id
-                    if quotaType == .investment && name.isEmpty {
-                        name = "Aporte \(firstInv.name)"
-                    }
                 }
             }
         }
@@ -404,6 +409,7 @@ public struct RedeemQuotaSheet: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var units: Int = 1
+    @State private var customAmountString: String = ""
     @State private var selectedAccountId: UUID = UUID()
 
     public var body: some View {
@@ -423,9 +429,7 @@ public struct RedeemQuotaSheet: View {
                         HStack {
                             Text("Valor a Aportar")
                             Spacer()
-                            Text(AppFormatters.currency(envelope.estimatedUnitPrice))
-                                .bold()
-                                .foregroundStyle(Color(hex: "#10B981"))
+                            BRLCurrencyTextField("R$ 0,00", text: $customAmountString)
                         }
 
                         Picker("Conta de Pagamento (Saída)", selection: $selectedAccountId) {
@@ -465,19 +469,27 @@ public struct RedeemQuotaSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isInvestment ? "Confirmar Aporte" : "Confirmar Baixa") {
+                        let customAmount = isInvestment ? (AppFormatters.parseAmount(customAmountString) ?? envelope.estimatedUnitPrice) : nil
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         store.redeemQuotaUnits(
                             quotaId: envelope.rule.id,
                             units: isInvestment ? 1 : units,
-                            accountId: selectedAccountId
+                            accountId: selectedAccountId,
+                            unitPriceOverride: customAmount
                         )
                         dismiss()
                     }
+                    .disabled(isInvestment ? ((AppFormatters.parseAmount(customAmountString) ?? 0.0) <= 0) : false)
                 }
             }
             .onAppear {
                 if let first = store.accounts.first {
                     selectedAccountId = first.id
+                }
+                if isInvestment && customAmountString.isEmpty {
+                    let remaining = envelope.totalEstimatedAmount - envelope.realizedExpense
+                    let defaultVal = remaining > 0 ? remaining : envelope.estimatedUnitPrice
+                    customAmountString = AppFormatters.currency(defaultVal > 0 ? defaultVal : envelope.estimatedUnitPrice)
                 }
             }
         }

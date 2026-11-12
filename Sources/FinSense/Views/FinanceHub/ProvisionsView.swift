@@ -415,13 +415,30 @@ public struct ProvisionsView: View {
                                                 .foregroundStyle(Color(hex: "#10B981"))
                                         }
                                     }
-                                    Text(isInvestment
-                                         ? (env.consumedUnits >= env.plannedQuantity && env.plannedQuantity > 0
-                                            ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • Meta concluída"
-                                            : "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes")
-                                         : "\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(Color.secondary)
+                                    if isInvestment {
+                                        let target = env.totalEstimatedAmount
+                                        let realized = env.realizedExpense
+                                        if realized >= target && target > 0 {
+                                            if realized > target + 0.01 {
+                                                Text("\(AppFormatters.currency(realized)) aportados (Meta: \(AppFormatters.currency(target))) • Meta superada")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(Color.secondary)
+                                            } else {
+                                                Text("\(AppFormatters.currency(realized)) de \(AppFormatters.currency(target)) • Meta concluída")
+                                                    .font(.system(size: 11))
+                                                    .foregroundStyle(Color.secondary)
+                                            }
+                                        } else {
+                                            let remaining = max(0.0, target - realized)
+                                            Text("\(AppFormatters.currency(realized)) de \(AppFormatters.currency(target)) • \(AppFormatters.currency(remaining)) restantes")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(Color.secondary)
+                                        }
+                                    } else {
+                                        Text("\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Color.secondary)
+                                    }
                                 }
 
                                 Spacer()
