@@ -174,6 +174,9 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
     }
 
     public var status: ProvisionStatusLevel {
+        if quotaType == .investment {
+            return .normal
+        }
         if consumedUnits > plannedQuantity {
             return .exceeded
         } else if plannedQuantity > 0 && Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
@@ -181,6 +184,58 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
         } else {
             return .normal
         }
+    }
+
+    public var statusTitle: String {
+        if quotaType == .investment {
+            guard plannedQuantity > 0 else { return "Pendente" }
+            if consumedUnits > plannedQuantity {
+                return "Superado"
+            } else if consumedUnits == plannedQuantity {
+                return "Meta Atingida"
+            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+                return "Quase lá"
+            } else if consumedUnits > 0 {
+                return "Em andamento"
+            } else {
+                return "Pendente"
+            }
+        }
+        return status.title
+    }
+
+    public var statusColorHex: String {
+        if quotaType == .investment {
+            guard plannedQuantity > 0 else { return "#94A3B8" }
+            if consumedUnits >= plannedQuantity {
+                return "#10B981"
+            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+                return "#0284C7"
+            } else if consumedUnits > 0 {
+                return "#0284C7"
+            } else {
+                return "#94A3B8"
+            }
+        }
+        return status.colorHex
+    }
+
+    public var statusIconSymbol: String {
+        if quotaType == .investment {
+            guard plannedQuantity > 0 else { return "circle" }
+            if consumedUnits > plannedQuantity {
+                return "star.fill"
+            } else if consumedUnits == plannedQuantity {
+                return "checkmark.circle.fill"
+            } else if Double(consumedUnits) / Double(plannedQuantity) >= 0.8 - 0.001 {
+                return "chart.line.uptrend.xyaxis"
+            } else if consumedUnits > 0 {
+                return "arrow.triangle.2.circlepath"
+            } else {
+                return "circle"
+            }
+        }
+        return status.iconSymbol
     }
 
     public init(

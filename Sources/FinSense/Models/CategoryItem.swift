@@ -214,7 +214,7 @@ public enum DefaultCategoriesCatalog {
             ),
             CategoryItem(
                 id: UUID(uuidString: "10000000-0000-0000-0000-000000000014")!,
-                name: "Aportes em Investimentos",
+                name: "Aportes e investimentos",
                 type: .expense,
                 iconSymbol: "chart.line.uptrend.xyaxis",
                 colorHex: "#6366F1",

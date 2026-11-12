@@ -133,7 +133,9 @@ public struct CategoryQuotasView: View {
                                                 }
                                             }
                                             Text(isInvestment
-                                                 ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes"
+                                                 ? (env.consumedUnits >= env.plannedQuantity && env.plannedQuantity > 0
+                                                    ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • Meta concluída"
+                                                    : "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes")
                                                  : "\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
                                                 .font(.system(size: 11))
                                                 .foregroundStyle(Color.secondary)
@@ -141,12 +143,12 @@ public struct CategoryQuotasView: View {
 
                                         Spacer()
 
-                                        Text(env.status.title)
+                                        Text(env.statusTitle)
                                             .font(.system(size: 10, weight: .bold))
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 3)
-                                            .background(Capsule().fill(Color(hex: env.status.colorHex).opacity(0.15)))
-                                            .foregroundStyle(Color(hex: env.status.colorHex))
+                                            .background(Capsule().fill(Color(hex: env.statusColorHex).opacity(0.15)))
+                                            .foregroundStyle(Color(hex: env.statusColorHex))
                                     }
 
                                     // Barra de Consumo de Cotas
@@ -156,7 +158,7 @@ public struct CategoryQuotasView: View {
                                                 .fill(Color.primary.opacity(0.08))
                                                 .frame(height: 7)
                                             Capsule()
-                                                .fill(Color(hex: env.status.colorHex))
+                                                .fill(Color(hex: env.statusColorHex))
                                                 .frame(width: max(7, CGFloat(env.progressRatio) * geo.size.width), height: 7)
                                         }
                                     }
@@ -348,7 +350,7 @@ public struct QuotaEditorSheet: View {
                             let finalName = name.trimmingCharacters(in: .whitespaces).isEmpty
                                 ? "Aporte \(inv?.name ?? "Investimento")"
                                 : name
-                            let fallbackCat = store.fallbackCategoryId(for: .expense, matchingSubstring: "Aplicações")
+                            let fallbackCat = store.investmentDepositCategoryId()
 
                             store.createQuota(
                                 categoryId: fallbackCat,

@@ -240,6 +240,25 @@ public final class FinancialDataStore: ObservableObject {
             self.provisions = decoded.provisions ?? []
             self.categoryQuotas = decoded.categoryQuotas ?? []
             ensureRecurringTransactionsMaterialized(upTo: endOfYear(for: selectedMonth))
+
+            // Migrar e garantir categoria "Aportes e investimentos" para depósitos e cotas de investimento
+            let aporteCatId = self.investmentDepositCategoryId()
+            var mutatedData = false
+            for i in 0..<self.transactions.count {
+                if self.transactions[i].transactionOrigin == .investmentDeposit && self.transactions[i].categoryId != aporteCatId {
+                    self.transactions[i].categoryId = aporteCatId
+                    mutatedData = true
+                }
+            }
+            for i in 0..<self.categoryQuotas.count {
+                if self.categoryQuotas[i].quotaType == .investment && self.categoryQuotas[i].categoryId != aporteCatId {
+                    self.categoryQuotas[i].categoryId = aporteCatId
+                    mutatedData = true
+                }
+            }
+            if mutatedData {
+                saveToDisk()
+            }
         } else {
             self.categories = DefaultCategoriesCatalog.buildInitialCategories()
             self.accounts = []
@@ -292,6 +311,42 @@ public final class FinancialDataStore: ObservableObject {
             return match.id
         }
         return categories.first(where: { $0.type == type })?.id ?? categories.first?.id ?? UUID()
+    }
+
+    /// Retorna a categoria padronizada "Aportes e investimentos", migrando registros legados
+    /// ou criando-a sob demanda caso ainda não exista no catálogo de categorias do usuário.
+    public func investmentDepositCategoryId() -> UUID {
+        // 1. Categoria exata de despesa "Aportes e investimentos"
+        if let exact = categories.first(where: { $0.type == .expense && $0.name.compare("Aportes e investimentos", options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) {
+            return exact.id
+        }
+        // 2. Se houver legado "Aportes em Investimentos", atualizar nome
+        if let legacyIdx = categories.firstIndex(where: { $0.type == .expense && $0.name.compare("Aportes em Investimentos", options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame }) {
+            categories[legacyIdx].name = "Aportes e investimentos"
+            saveToDisk()
+            cloudSyncService?.recordLocalMutation(entityName: "categories", entityId: categories[legacyIdx].id, operation: .upsert, entity: categories[legacyIdx])
+            return categories[legacyIdx].id
+        }
+        // 3. Qualquer categoria que contenha "aporte"
+        if let aporteIdx = categories.firstIndex(where: { $0.type == .expense && $0.name.localizedCaseInsensitiveContains("aporte") }) {
+            categories[aporteIdx].name = "Aportes e investimentos"
+            saveToDisk()
+            cloudSyncService?.recordLocalMutation(entityName: "categories", entityId: categories[aporteIdx].id, operation: .upsert, entity: categories[aporteIdx])
+            return categories[aporteIdx].id
+        }
+        // 4. Se não existir, criar a categoria "Aportes e investimentos"
+        let newCat = CategoryItem(
+            name: "Aportes e investimentos",
+            type: .expense,
+            iconSymbol: "chart.line.uptrend.xyaxis",
+            colorHex: "#6366F1",
+            keywords: ["APORTE", "INVESTIMENTO", "CDB", "POUPANCA", "COFRINHO"],
+            isSystemDefault: true
+        )
+        categories.append(newCat)
+        saveToDisk()
+        cloudSyncService?.recordLocalMutation(entityName: "categories", entityId: newCat.id, operation: .upsert, entity: newCat)
+        return newCat.id
     }
 
     // MARK: - CRUD: Contas Bancárias
@@ -399,6 +454,8 @@ public final class FinancialDataStore: ObservableObject {
         linkedInvestmentId: UUID? = nil,
         linkedDebtId: UUID? = nil,
         linkedQuotaId: UUID? = nil,
+        linkedQuotaUnits: Int? = nil,
+        linkedQuotaYearMonthKey: Int? = nil,
         transactionOrigin: TransactionOrigin? = nil,
         linkedEntityID: UUID? = nil
     ) -> FinancialTransaction {
@@ -427,6 +484,8 @@ public final class FinancialDataStore: ObservableObject {
             linkedInvestmentId: linkedInvestmentId,
             linkedDebtId: linkedDebtId,
             linkedQuotaId: linkedQuotaId,
+            linkedQuotaUnits: linkedQuotaUnits,
+            linkedQuotaYearMonthKey: linkedQuotaYearMonthKey,
             transactionOrigin: transactionOrigin,
             linkedEntityID: linkedEntityID
         )
@@ -764,7 +823,7 @@ public final class FinancialDataStore: ObservableObject {
 
         let catId: UUID = {
             if movementType == .deposit {
-                return fallbackCategoryId(for: .expense, matchingSubstring: "Aportes")
+                return investmentDepositCategoryId()
             } else {
                 return fallbackCategoryId(for: .income, matchingSubstring: "Resgate")
             }
@@ -1933,7 +1992,15 @@ public final class FinancialDataStore: ObservableObject {
             let unitPrice = override?.estimatedUnitPrice ?? rule.estimatedUnitPrice
             let ruleName = override?.name ?? rule.name
 
-            let linkedTxs = transactionsForMonth(monthReference).filter { $0.linkedQuotaId == rule.id || $0.linkedQuotaId == rule.seriesId }
+            let linkedTxs = transactionsForMonth(monthReference).filter { tx in
+                if tx.linkedQuotaId == rule.id || tx.linkedQuotaId == rule.seriesId {
+                    return true
+                }
+                if rule.quotaType == .investment, let linkedInvId = rule.linkedInvestmentId {
+                    return tx.linkedInvestmentId == linkedInvId && tx.transactionOrigin == .investmentDeposit
+                }
+                return false
+            }
             let consumed = linkedTxs.reduce(0) { $0 + ($1.linkedQuotaUnits ?? 1) }
             let realized = linkedTxs.reduce(0.0) { $0 + $1.amount }
 
@@ -2183,7 +2250,7 @@ public final class FinancialDataStore: ObservableObject {
         let isInvestment = rule.quotaType == .investment
         let catId: UUID = {
             if isInvestment {
-                return fallbackCategoryId(for: .expense, matchingSubstring: "Aplicações")
+                return investmentDepositCategoryId()
             }
             return rule.categoryId
         }()
@@ -2202,6 +2269,8 @@ public final class FinancialDataStore: ObservableObject {
             accountId: accountId,
             linkedInvestmentId: isInvestment ? rule.linkedInvestmentId : nil,
             linkedQuotaId: rule.seriesId,
+            linkedQuotaUnits: units,
+            linkedQuotaYearMonthKey: rule.yearMonthKey,
             transactionOrigin: txOrigin,
             linkedEntityID: isInvestment ? rule.linkedInvestmentId : nil
         )

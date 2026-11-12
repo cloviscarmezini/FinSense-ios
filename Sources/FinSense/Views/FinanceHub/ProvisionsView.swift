@@ -302,12 +302,12 @@ public struct ProvisionsView: View {
 
                                     Spacer()
 
-                                    Text(env.status.title)
+                                    Text(env.statusTitle)
                                         .font(.system(size: 10, weight: .bold))
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 3)
-                                        .background(Capsule().fill(Color(hex: env.status.colorHex).opacity(0.15)))
-                                        .foregroundStyle(Color(hex: env.status.colorHex))
+                                        .background(Capsule().fill(Color(hex: env.statusColorHex).opacity(0.15)))
+                                        .foregroundStyle(Color(hex: env.statusColorHex))
                                 }
 
                                 // Barra de Progresso
@@ -318,7 +318,7 @@ public struct ProvisionsView: View {
                                             .fill(Color.primary.opacity(0.08))
                                             .frame(height: 7)
                                         Capsule()
-                                            .fill(Color(hex: env.status.colorHex))
+                                            .fill(Color(hex: env.statusColorHex))
                                             .frame(width: max(7, CGFloat(ratio) * geo.size.width), height: 7)
                                     }
                                 }
@@ -386,35 +386,52 @@ public struct ProvisionsView: View {
         } else {
             VStack(spacing: 12) {
                 ForEach(envelopes) { env in
+                    let isInvestment = env.quotaType == .investment
+                    let accentColorHex = isInvestment ? "#10B981" : "#0284C7"
+
                     LiquidGlassCard(cornerRadius: 18, padding: 14) {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack {
                                 ZStack {
                                     Circle()
-                                        .fill(Color(hex: "#0284C7").opacity(0.18))
+                                        .fill(Color(hex: accentColorHex).opacity(0.18))
                                         .frame(width: 36, height: 36)
-                                    Image(systemName: env.iconSymbol)
+                                    Image(systemName: isInvestment ? "chart.line.uptrend.xyaxis" : env.iconSymbol)
                                         .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(Color(hex: "#0284C7"))
+                                        .foregroundStyle(Color(hex: accentColorHex))
                                 }
 
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(env.name)
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(Color.primary)
-                                    Text("\(env.consumedUnits) de \(env.plannedQuantity) consumidas")
+                                    HStack(spacing: 6) {
+                                        Text(env.name)
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(Color.primary)
+                                        if isInvestment {
+                                            Text("INVESTIMENTO")
+                                                .font(.system(size: 8.5, weight: .bold))
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1.5)
+                                                .background(Capsule().fill(Color(hex: "#10B981").opacity(0.18)))
+                                                .foregroundStyle(Color(hex: "#10B981"))
+                                        }
+                                    }
+                                    Text(isInvestment
+                                         ? (env.consumedUnits >= env.plannedQuantity && env.plannedQuantity > 0
+                                            ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • Meta concluída"
+                                            : "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes")
+                                         : "\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
                                         .font(.system(size: 11))
                                         .foregroundStyle(Color.secondary)
                                 }
 
                                 Spacer()
 
-                                Text(env.status.title)
+                                Text(env.statusTitle)
                                     .font(.system(size: 10, weight: .bold))
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
-                                    .background(Capsule().fill(Color(hex: env.status.colorHex).opacity(0.15)))
-                                    .foregroundStyle(Color(hex: env.status.colorHex))
+                                    .background(Capsule().fill(Color(hex: env.statusColorHex).opacity(0.15)))
+                                    .foregroundStyle(Color(hex: env.statusColorHex))
                             }
 
                             // Barra de Consumo de Cotas
@@ -424,7 +441,7 @@ public struct ProvisionsView: View {
                                         .fill(Color.primary.opacity(0.08))
                                         .frame(height: 7)
                                     Capsule()
-                                        .fill(Color(hex: env.status.colorHex))
+                                        .fill(Color(hex: env.statusColorHex))
                                         .frame(width: max(7, CGFloat(env.progressRatio) * geo.size.width), height: 7)
                                 }
                             }
@@ -432,12 +449,14 @@ public struct ProvisionsView: View {
 
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Unitário: \(AppFormatters.currency(env.estimatedUnitPrice))")
+                                    Text(isInvestment ? "Total Planejado: \(AppFormatters.currency(env.totalEstimatedAmount))" : "Unitário: \(AppFormatters.currency(env.estimatedUnitPrice))")
                                         .font(.system(size: 10.5))
                                         .foregroundStyle(Color.secondary)
-                                    Text("Total: \(AppFormatters.currency(env.totalEstimatedAmount))")
-                                        .font(.system(size: 11.5, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(Color.primary)
+                                    if !isInvestment {
+                                        Text("Total: \(AppFormatters.currency(env.totalEstimatedAmount))")
+                                            .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(Color.primary)
+                                    }
                                 }
 
                                 Spacer()
@@ -446,14 +465,14 @@ public struct ProvisionsView: View {
                                     redeemingQuotaEnvelope = env
                                 } label: {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "cart.badge.plus")
-                                        Text("Baixar Cota")
+                                        Image(systemName: isInvestment ? "arrow.up.circle.fill" : "cart.badge.plus")
+                                        Text(isInvestment ? "Aportar" : "Baixar Cota")
                                     }
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
-                                    .background(Capsule().fill(Color(hex: "#0284C7")))
+                                    .background(Capsule().fill(Color(hex: isInvestment ? "#10B981" : "#0284C7")))
                                 }
                                 .buttonStyle(.plain)
                             }
