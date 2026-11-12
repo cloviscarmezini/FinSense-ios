@@ -1856,7 +1856,9 @@ public final class FinancialDataStore: ObservableObject {
         month: Int,
         plannedQuantity: Int,
         estimatedUnitPrice: Double,
-        repeatForFutureMonths: Bool = true
+        repeatForFutureMonths: Bool = true,
+        quotaType: QuotaType = .expense,
+        linkedInvestmentId: UUID? = nil
     ) {
         let quota = CategoryQuotaRule(
             categoryId: categoryId,
@@ -1866,7 +1868,9 @@ public final class FinancialDataStore: ObservableObject {
             month: month,
             plannedQuantity: plannedQuantity,
             estimatedUnitPrice: estimatedUnitPrice,
-            repeatForFutureMonths: repeatForFutureMonths
+            repeatForFutureMonths: repeatForFutureMonths,
+            quotaType: quotaType,
+            linkedInvestmentId: linkedInvestmentId
         )
         categoryQuotas.append(quota)
         saveToDisk()
@@ -2143,20 +2147,26 @@ public final class FinancialDataStore: ObservableObject {
     public func createQuota(
         categoryId: UUID,
         name: String,
+        iconSymbol: String = "shippingbox.fill",
         year: Int,
         month: Int,
         quantity: Int,
         unitPrice: Double,
-        repeatForFuture: Bool = true
+        repeatForFuture: Bool = true,
+        quotaType: QuotaType = .expense,
+        linkedInvestmentId: UUID? = nil
     ) {
         createCategoryQuotaRule(
             categoryId: categoryId,
             name: name,
+            iconSymbol: iconSymbol,
             year: year,
             month: month,
             plannedQuantity: quantity,
             estimatedUnitPrice: unitPrice,
-            repeatForFutureMonths: repeatForFuture
+            repeatForFutureMonths: repeatForFuture,
+            quotaType: quotaType,
+            linkedInvestmentId: linkedInvestmentId
         )
     }
 
@@ -2164,22 +2174,53 @@ public final class FinancialDataStore: ObservableObject {
         quotaId: UUID,
         units: Int,
         accountId: UUID,
-        date: Date = Date()
+        date: Date = Date(),
+        unitPriceOverride: Double? = nil
     ) {
         guard let rule = categoryQuotas.first(where: { $0.id == quotaId || $0.seriesId == quotaId }) else { return }
-        let totalAmount = Double(units) * rule.estimatedUnitPrice
-        createTransaction(
-            name: "\(rule.name) (\(units) un.)",
-            details: "Baixa de cota",
+        let effectivePrice = max(0.0, unitPriceOverride ?? rule.estimatedUnitPrice)
+        let totalAmount = Double(units) * effectivePrice
+        let isInvestment = rule.quotaType == .investment
+        let catId: UUID = {
+            if isInvestment {
+                return fallbackCategoryId(for: .expense, matchingSubstring: "Aplicações")
+            }
+            return rule.categoryId
+        }()
+        let txOrigin: TransactionOrigin = isInvestment ? .investmentDeposit : .quotaAllocation
+        let txTitle = isInvestment ? "Aporte: \(rule.name)" : "\(rule.name) (\(units) un.)"
+        let txDetails = isInvestment ? "Aporte via planejamento de investimento" : "Baixa de cota"
+
+        let tx = createTransaction(
+            name: txTitle,
+            details: txDetails,
             amount: totalAmount,
             date: date,
             type: .expense,
             isPaid: true,
-            categoryId: rule.categoryId,
+            categoryId: catId,
             accountId: accountId,
-            linkedQuotaId: rule.id,
-            transactionOrigin: .quotaAllocation
+            linkedInvestmentId: isInvestment ? rule.linkedInvestmentId : nil,
+            linkedQuotaId: rule.seriesId,
+            transactionOrigin: txOrigin,
+            linkedEntityID: isInvestment ? rule.linkedInvestmentId : nil
         )
+
+        if isInvestment, let invId = rule.linkedInvestmentId, let idx = investments.firstIndex(where: { $0.id == invId }) {
+            investments[idx].balance += totalAmount
+            let mov = InvestmentMovement(
+                type: .deposit,
+                amount: totalAmount,
+                date: date,
+                sourceAccountId: accountId,
+                investmentAccountId: investments[idx].investmentAccountId,
+                notes: txDetails,
+                generatedTransactionId: tx.id
+            )
+            investments[idx].movements.insert(mov, at: 0)
+            saveToDisk()
+            cloudSyncService?.recordLocalMutation(entityName: "investment_items", entityId: invId, operation: .upsert, entity: investments[idx])
+        }
     }
 
     public func calculateProvisionEnvelopes(for month: Date) -> [CategoryProvisionEnvelope] {

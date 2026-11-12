@@ -105,21 +105,36 @@ public struct CategoryQuotasView: View {
                         ForEach(envelopes) { env in
                             LiquidGlassCard(cornerRadius: 18, padding: 14) {
                                 VStack(alignment: .leading, spacing: 10) {
-                                    HStack {
+                                    HStack(spacing: 12) {
+                                        let isInvestment = env.quotaType == .investment
+                                        let accentColorHex = isInvestment ? "#10B981" : "#0284C7"
+
                                         ZStack {
                                             Circle()
-                                                .fill(Color(hex: "#0284C7").opacity(0.18))
+                                                .fill(Color(hex: accentColorHex).opacity(0.18))
                                                 .frame(width: 36, height: 36)
-                                            Image(systemName: env.iconSymbol)
+                                            Image(systemName: isInvestment ? "chart.line.uptrend.xyaxis" : env.iconSymbol)
                                                 .font(.system(size: 15, weight: .bold))
-                                                .foregroundStyle(Color(hex: "#0284C7"))
+                                                .foregroundStyle(Color(hex: accentColorHex))
                                         }
 
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(env.name)
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundStyle(Color.primary)
-                                            Text("\(env.consumedUnits) de \(env.plannedQuantity) consumidas")
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            HStack(spacing: 6) {
+                                                Text(env.name)
+                                                    .font(.system(size: 14, weight: .bold))
+                                                    .foregroundStyle(Color.primary)
+                                                if isInvestment {
+                                                    Text("INVESTIMENTO")
+                                                        .font(.system(size: 8.5, weight: .bold))
+                                                        .padding(.horizontal, 5)
+                                                        .padding(.vertical, 1.5)
+                                                        .background(Capsule().fill(Color(hex: "#10B981").opacity(0.18)))
+                                                        .foregroundStyle(Color(hex: "#10B981"))
+                                                }
+                                            }
+                                            Text(isInvestment
+                                                 ? "\(env.consumedUnits) de \(env.plannedQuantity) aportes • \(AppFormatters.currency(env.remainingProvision)) restantes"
+                                                 : "\(env.consumedUnits) de \(env.plannedQuantity) consumidas • \(AppFormatters.currency(env.remainingProvision)) restantes")
                                                 .font(.system(size: 11))
                                                 .foregroundStyle(Color.secondary)
                                         }
@@ -148,7 +163,7 @@ public struct CategoryQuotasView: View {
                                     .frame(height: 7)
 
                                     HStack {
-                                        Text("Unitário: \(AppFormatters.currency(env.estimatedUnitPrice))")
+                                        Text(env.quotaType == .investment ? "Total Planejado: \(AppFormatters.currency(env.totalEstimatedAmount))" : "Unitário: \(AppFormatters.currency(env.estimatedUnitPrice))")
                                             .font(.system(size: 11))
                                             .foregroundStyle(Color.secondary)
 
@@ -158,14 +173,14 @@ public struct CategoryQuotasView: View {
                                             redeemingEnvelope = env
                                         } label: {
                                             HStack(spacing: 4) {
-                                                Image(systemName: "cart.badge.plus")
-                                                Text("Baixar Cota")
+                                                Image(systemName: env.quotaType == .investment ? "arrow.up.circle.fill" : "cart.badge.plus")
+                                                Text(env.quotaType == .investment ? "Aportar" : "Baixar Cota")
                                             }
                                             .font(.system(size: 11, weight: .bold))
                                             .foregroundStyle(.white)
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 5)
-                                            .background(Capsule().fill(Color(hex: "#0284C7")))
+                                            .background(Capsule().fill(Color(hex: env.quotaType == .investment ? "#10B981" : "#0284C7")))
                                         }
                                         .buttonStyle(.plain)
                                     }
@@ -239,6 +254,8 @@ public struct QuotaEditorSheet: View {
     @ObservedObject var store: FinancialDataStore
     @Environment(\.dismiss) var dismiss
 
+    @State private var quotaType: QuotaType = .expense
+    @State private var selectedInvestmentId: UUID = UUID()
     @State private var name: String = ""
     @State private var selectedCategoryId: UUID = UUID()
     @State private var plannedQuantity: Int = 4
@@ -248,29 +265,72 @@ public struct QuotaEditorSheet: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("Identificação da Cota") {
-                    TextField("Nome (ex: Botijão de Gás, Faxina quinzenal)", text: $name)
+                Section {
+                    Picker("Tipo de Cota", selection: $quotaType) {
+                        Text("Cota de Despesa").tag(QuotaType.expense)
+                        Text("Planejamento de Investimento").tag(QuotaType.investment)
+                    }
+                    .pickerStyle(.segmented)
+                }
 
-                    Picker("Categoria", selection: $selectedCategoryId) {
-                        ForEach(store.categories.filter { $0.type == .expense }) { cat in
-                            Text(cat.name).tag(cat.id)
+                if quotaType == .investment {
+                    Section("Investimento de Destino") {
+                        if store.investments.isEmpty {
+                            Text("Nenhum investimento cadastrado. Cadastre investimentos na aba Investimentos para vincular.")
+                                .font(.caption)
+                                .foregroundStyle(Color(hex: "#EF4444"))
+                        } else {
+                            Picker("Investimento", selection: $selectedInvestmentId) {
+                                ForEach(store.investments) { inv in
+                                    Text("\(inv.name) (\(inv.groupName))").tag(inv.id)
+                                }
+                            }
+                            .onChange(of: selectedInvestmentId) { _, newId in
+                                if let inv = store.investments.first(where: { $0.id == newId }) {
+                                    if name.isEmpty || store.investments.contains(where: { "Aporte \($0.name)" == name || $0.name == name }) {
+                                        name = "Aporte \(inv.name)"
+                                    }
+                                }
+                            }
+                        }
+
+                        TextField("Identificação (ex: Aporte Tesouro Direto)", text: $name)
+                    }
+
+                    Section("Planejamento de Aporte") {
+                        HStack {
+                            Text("Valor a Guardar / Investir")
+                            Spacer()
+                            BRLCurrencyTextField("R$ 0,00", text: $unitPriceString)
+                        }
+
+                        Toggle("Repetir para os meses seguintes", isOn: $repeatForFuture)
+                    }
+                } else {
+                    Section("Identificação da Cota") {
+                        TextField("Nome (ex: Botijão de Gás, Faxina quinzenal)", text: $name)
+
+                        Picker("Categoria", selection: $selectedCategoryId) {
+                            ForEach(store.categories.filter { $0.type == .expense }) { cat in
+                                Text(cat.name).tag(cat.id)
+                            }
                         }
                     }
-                }
 
-                Section("Planejamento Mensal") {
-                    Stepper("Quantidade Mensal: \(plannedQuantity)", value: $plannedQuantity, in: 1...100)
+                    Section("Planejamento Mensal") {
+                        Stepper("Quantidade Mensal: \(plannedQuantity)", value: $plannedQuantity, in: 1...100)
 
-                    HStack {
-                        Text("Preço Unitário Estimado")
-                        Spacer()
-                        BRLCurrencyTextField("R$ 0,00", text: $unitPriceString)
+                        HStack {
+                            Text("Preço Unitário Estimado")
+                            Spacer()
+                            BRLCurrencyTextField("R$ 0,00", text: $unitPriceString)
+                        }
+
+                        Toggle("Repetir para os meses seguintes", isOn: $repeatForFuture)
                     }
-
-                    Toggle("Repetir para os meses seguintes", isOn: $repeatForFuture)
                 }
             }
-            .navigationTitle("Nova Cota")
+            .navigationTitle(quotaType == .investment ? "Novo Planejamento" : "Nova Cota")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -283,23 +343,53 @@ public struct QuotaEditorSheet: View {
                         let year = cal.component(.year, from: store.selectedMonth)
                         let month = cal.component(.month, from: store.selectedMonth)
 
-                        store.createQuota(
-                            categoryId: selectedCategoryId,
-                            name: name,
-                            year: year,
-                            month: month,
-                            quantity: plannedQuantity,
-                            unitPrice: unitPrice,
-                            repeatForFuture: repeatForFuture
-                        )
+                        if quotaType == .investment {
+                            let inv = store.investments.first(where: { $0.id == selectedInvestmentId })
+                            let finalName = name.trimmingCharacters(in: .whitespaces).isEmpty
+                                ? "Aporte \(inv?.name ?? "Investimento")"
+                                : name
+                            let fallbackCat = store.fallbackCategoryId(for: .expense, matchingSubstring: "Aplicações")
+
+                            store.createQuota(
+                                categoryId: fallbackCat,
+                                name: finalName,
+                                iconSymbol: inv?.iconSymbol ?? "chart.line.uptrend.xyaxis",
+                                year: year,
+                                month: month,
+                                quantity: 1,
+                                unitPrice: unitPrice,
+                                repeatForFuture: repeatForFuture,
+                                quotaType: .investment,
+                                linkedInvestmentId: selectedInvestmentId
+                            )
+                        } else {
+                            store.createQuota(
+                                categoryId: selectedCategoryId,
+                                name: name,
+                                iconSymbol: "shippingbox.fill",
+                                year: year,
+                                month: month,
+                                quantity: plannedQuantity,
+                                unitPrice: unitPrice,
+                                repeatForFuture: repeatForFuture,
+                                quotaType: .expense,
+                                linkedInvestmentId: nil
+                            )
+                        }
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(quotaType == .investment ? (store.investments.isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0) : name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .onAppear {
                 if let first = store.categories.first(where: { $0.type == .expense }) {
                     selectedCategoryId = first.id
+                }
+                if let firstInv = store.investments.first {
+                    selectedInvestmentId = firstInv.id
+                    if quotaType == .investment && name.isEmpty {
+                        name = "Aporte \(firstInv.name)"
+                    }
                 }
             }
         }
@@ -315,41 +405,68 @@ public struct RedeemQuotaSheet: View {
     @State private var selectedAccountId: UUID = UUID()
 
     public var body: some View {
+        let isInvestment = envelope.quotaType == .investment
+        let investmentName = store.investments.first(where: { $0.id == envelope.linkedInvestmentId })?.name ?? envelope.name
+
         NavigationStack {
             Form {
-                Section("Baixa de Unidades") {
-                    Text("Cota: \(envelope.name)")
-                        .bold()
-
-                    Stepper("Unidades a Baixar: \(units)", value: $units, in: 1...10)
-
-                    HStack {
-                        Text("Valor Total a Debitar")
-                        Spacer()
-                        Text(AppFormatters.currency(Double(units) * envelope.estimatedUnitPrice))
+                if isInvestment {
+                    Section("Planejamento de Investimento") {
+                        Text("Aporte: \(envelope.name)")
                             .bold()
-                            .foregroundStyle(Color(hex: "#10B981"))
-                    }
+                        Text("Investimento de Destino: \(investmentName)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
 
-                    Picker("Conta de Pagamento", selection: $selectedAccountId) {
-                        ForEach(store.accounts) { acc in
-                            Text(acc.name).tag(acc.id)
+                        HStack {
+                            Text("Valor a Aportar")
+                            Spacer()
+                            Text(AppFormatters.currency(envelope.estimatedUnitPrice))
+                                .bold()
+                                .foregroundStyle(Color(hex: "#10B981"))
+                        }
+
+                        Picker("Conta de Pagamento (Saída)", selection: $selectedAccountId) {
+                            ForEach(store.accounts) { acc in
+                                Text(acc.name).tag(acc.id)
+                            }
+                        }
+                    }
+                } else {
+                    Section("Baixa de Unidades") {
+                        Text("Cota: \(envelope.name)")
+                            .bold()
+
+                        Stepper("Unidades a Baixar: \(units)", value: $units, in: 1...10)
+
+                        HStack {
+                            Text("Valor Total a Debitar")
+                            Spacer()
+                            Text(AppFormatters.currency(Double(units) * envelope.estimatedUnitPrice))
+                                .bold()
+                                .foregroundStyle(Color(hex: "#10B981"))
+                        }
+
+                        Picker("Conta de Pagamento", selection: $selectedAccountId) {
+                            ForEach(store.accounts) { acc in
+                                Text(acc.name).tag(acc.id)
+                            }
                         }
                     }
                 }
             }
-            .navigationTitle("Dar Baixa em Cota")
+            .navigationTitle(isInvestment ? "Realizar Aporte" : "Dar Baixa em Cota")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Confirmar Baixa") {
+                    Button(isInvestment ? "Confirmar Aporte" : "Confirmar Baixa") {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         store.redeemQuotaUnits(
                             quotaId: envelope.rule.id,
-                            units: units,
+                            units: isInvestment ? 1 : units,
                             accountId: selectedAccountId
                         )
                         dismiss()

@@ -1,6 +1,20 @@
 // Sources/FinSense/Models/CategoryQuotaRule.swift
 import Foundation
 
+public enum QuotaType: String, Codable, CaseIterable, Identifiable, Hashable {
+    case expense = "expense"
+    case investment = "investment"
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .expense: return "Cota de Despesa"
+        case .investment: return "Planejamento de Investimento"
+        }
+    }
+}
+
 public struct CategoryQuotaMonthlyOverride: Codable, Hashable {
     public var name: String?
     public var plannedQuantity: Int
@@ -30,6 +44,8 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
     public var repeatForFutureMonths: Bool
     public var monthlyOverrides: [Int: CategoryQuotaMonthlyOverride]?
     public var excludedYearMonthKeys: Set<Int>?
+    public var quotaType: QuotaType
+    public var linkedInvestmentId: UUID?
     public var createdAt: Date
 
     public init(
@@ -45,6 +61,8 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
         repeatForFutureMonths: Bool = true,
         monthlyOverrides: [Int: CategoryQuotaMonthlyOverride]? = nil,
         excludedYearMonthKeys: Set<Int>? = nil,
+        quotaType: QuotaType = .expense,
+        linkedInvestmentId: UUID? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -59,12 +77,14 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
         self.repeatForFutureMonths = repeatForFutureMonths
         self.monthlyOverrides = monthlyOverrides
         self.excludedYearMonthKeys = excludedYearMonthKeys
+        self.quotaType = quotaType
+        self.linkedInvestmentId = linkedInvestmentId
         self.createdAt = createdAt
     }
 
     enum CodingKeys: String, CodingKey {
         case id, seriesId, categoryId, name, iconSymbol, year, month, plannedQuantity, estimatedUnitPrice
-        case repeatForFutureMonths, monthlyOverrides, excludedYearMonthKeys, createdAt
+        case repeatForFutureMonths, monthlyOverrides, excludedYearMonthKeys, quotaType, linkedInvestmentId, createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -92,6 +112,14 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
             ?? (try? c.decodeIfPresent([Int: CategoryQuotaMonthlyOverride].self, forKey: AnyKey("monthly_overrides")))
         self.excludedYearMonthKeys = (try? c.decodeIfPresent(Set<Int>.self, forKey: AnyKey("excludedYearMonthKeys")))
             ?? (try? c.decodeIfPresent(Set<Int>.self, forKey: AnyKey("excluded_year_month_keys")))
+
+        let rawQuotaType = (try? c.decodeIfPresent(String.self, forKey: AnyKey("quotaType")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("quota_type")))
+        self.quotaType = QuotaType(rawValue: rawQuotaType ?? "expense") ?? .expense
+
+        self.linkedInvestmentId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linkedInvestmentId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linked_investment_id")))
+
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -110,6 +138,8 @@ public struct CategoryQuotaRule: Identifiable, Codable, Hashable {
         try c.encode(repeatForFutureMonths, forKey: .repeatForFutureMonths)
         try c.encodeIfPresent(monthlyOverrides, forKey: .monthlyOverrides)
         try c.encodeIfPresent(excludedYearMonthKeys, forKey: .excludedYearMonthKeys)
+        try c.encode(quotaType.rawValue, forKey: .quotaType)
+        try c.encodeIfPresent(linkedInvestmentId, forKey: .linkedInvestmentId)
         try c.encode(createdAt, forKey: .createdAt)
     }
 
@@ -123,6 +153,8 @@ public struct CategoryQuotaEnvelope: Identifiable, Hashable {
     public let rule: CategoryQuotaRule
     public var seriesId: UUID { rule.seriesId }
     public var categoryId: UUID { rule.categoryId }
+    public var quotaType: QuotaType { rule.quotaType }
+    public var linkedInvestmentId: UUID? { rule.linkedInvestmentId }
     public let name: String
     public let iconSymbol: String
     public let plannedQuantity: Int
