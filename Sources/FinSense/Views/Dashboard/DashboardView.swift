@@ -68,6 +68,9 @@ public struct DashboardView: View {
                         // Gráfico de Fluxo de Caixa (Mensal ou Anual)
                         cashFlowChartCard
 
+                        // Gráfico de Pizza: Despesas por Categoria
+                        categoryExpensesPieChartCard
+
                         // Seção Completa de Passivos & Compromissos Futuros
                         liabilitiesSection
 
@@ -543,6 +546,110 @@ public struct DashboardView: View {
                         }
                     }
                     .frame(height: 170)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Gráfico de Pizza / Donut: Despesas por Categoria (Swift Charts)
+    private var categoryExpensesPieChartCard: some View {
+        let expenseByCategory = isAnnual
+            ? store.annualCategoryBreakdown(for: store.selectedMonth, type: .expense)
+            : store.categoryBreakdown(for: store.selectedMonth, type: .expense)
+        let totalExpense = expenseByCategory.reduce(0.0) { $0 + $1.total }
+        let periodLabel = isAnnual ? yearString : AppFormatters.monthYear(store.selectedMonth)
+
+        return LiquidGlassCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chart.pie.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(Color(hex: "#6366F1"))
+                            Text("Despesas por Categoria")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(Color.primary)
+                        }
+                        Text(isAnnual ? "Distribuição anual em \(periodLabel)" : "Distribuição de gastos em \(periodLabel)")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.secondary)
+                    }
+
+                    Spacer()
+
+                    Text(AppFormatters.currency(totalExpense))
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color(hex: "#EF4444"))
+                }
+
+                if expenseByCategory.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "chart.pie")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color.secondary.opacity(0.4))
+                        Text(isAnnual ? "Nenhuma despesa registrada ou projetada neste ano." : "Nenhuma despesa registrada neste mês.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                } else {
+                    VStack(spacing: 16) {
+                        Chart(expenseByCategory) { item in
+                            SectorMark(
+                                angle: .value("Total", item.total),
+                                innerRadius: .ratio(0.58),
+                                angularInset: 1.5
+                            )
+                            .cornerRadius(4)
+                            .foregroundStyle(Color(hex: item.category.colorHex))
+                        }
+                        .frame(height: 180)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(expenseByCategory.prefix(6)) { item in
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(Color(hex: item.category.colorHex))
+                                        .frame(width: 8, height: 8)
+                                    Image(systemName: item.category.iconSymbol)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: item.category.colorHex))
+                                        .frame(width: 16)
+                                    Text(item.category.name)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(String(format: "%.1f%%", item.percentage))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(Color.secondary)
+                                    Text(AppFormatters.currency(item.total))
+                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(Color.primary)
+                                }
+                            }
+                            if expenseByCategory.count > 6 {
+                                let remaining = expenseByCategory.dropFirst(6)
+                                let remTotal = remaining.reduce(0.0) { $0 + $1.total }
+                                let remPct = (remTotal / (totalExpense > 0 ? totalExpense : 1.0)) * 100.0
+                                HStack(spacing: 8) {
+                                    Circle().fill(Color.secondary).frame(width: 8, height: 8)
+                                    Text("Outras categorias (\(remaining.count))")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Text(String(format: "%.1f%%", remPct))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(Color.secondary)
+                                    Text(AppFormatters.currency(remTotal))
+                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(Color.secondary)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

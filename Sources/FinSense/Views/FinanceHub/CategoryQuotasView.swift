@@ -6,6 +6,7 @@ public struct CategoryQuotasView: View {
     @State private var isAddQuotaPresented: Bool = false
     @State private var isMonthPickerPresented: Bool = false
     @State private var redeemingEnvelope: CategoryQuotaEnvelope? = nil
+    @State private var editingEnvelope: CategoryQuotaEnvelope? = nil
     @State private var pendingDeleteQuotaEnvelope: CategoryQuotaEnvelope? = nil
     @State private var showDeleteQuotaConfirmation: Bool = false
 
@@ -202,10 +203,27 @@ public struct CategoryQuotasView: View {
                                             .background(Capsule().fill(Color(hex: env.quotaType == .investment ? "#10B981" : "#0284C7")))
                                         }
                                         .buttonStyle(.plain)
+
+                                        Button {
+                                            editingEnvelope = env
+                                        } label: {
+                                            Image(systemName: "pencil")
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundStyle(Color.secondary)
+                                                .padding(6)
+                                                .background(Circle().fill(Color.white.opacity(0.06)))
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                 }
                             }
                             .contextMenu {
+                                Button {
+                                    editingEnvelope = env
+                                } label: {
+                                    Label("Editar Cota", systemImage: "pencil")
+                                }
+
                                 Button(role: .destructive) {
                                     pendingDeleteQuotaEnvelope = env
                                     showDeleteQuotaConfirmation = true
@@ -234,6 +252,9 @@ public struct CategoryQuotasView: View {
         }
         .sheet(isPresented: $isAddQuotaPresented) {
             QuotaEditorSheet(store: store)
+        }
+        .sheet(item: $editingEnvelope) { env in
+            QuotaEditorSheet(store: store, existingEnvelope: env)
         }
         .sheet(isPresented: $isMonthPickerPresented) {
             MonthPickerSheet(selectedMonth: $store.selectedMonth)
@@ -271,6 +292,7 @@ public struct CategoryQuotasView: View {
 
 public struct QuotaEditorSheet: View {
     @ObservedObject var store: FinancialDataStore
+    public let existingEnvelope: CategoryQuotaEnvelope?
     @Environment(\.dismiss) var dismiss
 
     @State private var quotaType: QuotaType = .expense
@@ -280,16 +302,35 @@ public struct QuotaEditorSheet: View {
     @State private var plannedQuantity: Int = 4
     @State private var unitPriceString: String = ""
     @State private var repeatForFuture: Bool = true
+    @State private var showEditScopeDialog: Bool = false
+
+    public init(store: FinancialDataStore, existingEnvelope: CategoryQuotaEnvelope? = nil) {
+        self.store = store
+        self.existingEnvelope = existingEnvelope
+        let initialType = existingEnvelope?.quotaType ?? .expense
+        _quotaType = State(initialValue: initialType)
+        _name = State(initialValue: existingEnvelope?.name ?? "")
+        let firstExpenseId = store.categories.first(where: { $0.type == .expense })?.id ?? UUID()
+        _selectedCategoryId = State(initialValue: existingEnvelope?.categoryId ?? firstExpenseId)
+        let firstInvId = store.investments.first?.id ?? UUID()
+        _selectedInvestmentId = State(initialValue: existingEnvelope?.linkedInvestmentId ?? firstInvId)
+        _plannedQuantity = State(initialValue: existingEnvelope?.plannedQuantity ?? (initialType == .investment ? 1 : 4))
+        let initialPrice = existingEnvelope != nil ? AppFormatters.currency(existingEnvelope!.estimatedUnitPrice) : ""
+        _unitPriceString = State(initialValue: initialPrice)
+        _repeatForFuture = State(initialValue: existingEnvelope?.repeatForFutureMonths ?? true)
+    }
 
     public var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Picker("Tipo de Cota", selection: $quotaType) {
-                        Text("Cota de Despesa").tag(QuotaType.expense)
-                        Text("Planejamento de Investimento").tag(QuotaType.investment)
+                if existingEnvelope == nil {
+                    Section {
+                        Picker("Tipo de Cota", selection: $quotaType) {
+                            Text("Cota de Despesa").tag(QuotaType.expense)
+                            Text("Planejamento de Investimento").tag(QuotaType.investment)
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 if quotaType == .investment {
@@ -340,7 +381,7 @@ public struct QuotaEditorSheet: View {
                     }
                 }
             }
-            .navigationTitle(quotaType == .investment ? "Novo Planejamento" : "Nova Cota")
+            .navigationTitle(existingEnvelope == nil ? (quotaType == .investment ? "Novo Planejamento" : "Nova Cota") : (quotaType == .investment ? "Editar Planejamento" : "Editar Cota"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -348,58 +389,82 @@ public struct QuotaEditorSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Salvar") {
-                        let unitPrice = AppFormatters.parseAmount(unitPriceString) ?? 0.0
-                        let cal = Calendar.current
-                        let year = cal.component(.year, from: store.selectedMonth)
-                        let month = cal.component(.month, from: store.selectedMonth)
-
-                        if quotaType == .investment {
-                            let inv = store.investments.first(where: { $0.id == selectedInvestmentId })
-                            let finalName = "Aporte \(inv?.name ?? "Investimento")"
-                            let fallbackCat = store.investmentDepositCategoryId()
-
-                            store.createQuota(
-                                categoryId: fallbackCat,
-                                name: finalName,
-                                iconSymbol: inv?.iconSymbol ?? "chart.line.uptrend.xyaxis",
-                                year: year,
-                                month: month,
-                                quantity: 1,
-                                unitPrice: unitPrice,
-                                repeatForFuture: repeatForFuture,
-                                quotaType: .investment,
-                                linkedInvestmentId: selectedInvestmentId
-                            )
+                        if existingEnvelope != nil && existingEnvelope!.repeatForFutureMonths {
+                            showEditScopeDialog = true
                         } else {
-                            store.createQuota(
-                                categoryId: selectedCategoryId,
-                                name: name,
-                                iconSymbol: "shippingbox.fill",
-                                year: year,
-                                month: month,
-                                quantity: plannedQuantity,
-                                unitPrice: unitPrice,
-                                repeatForFuture: repeatForFuture,
-                                quotaType: .expense,
-                                linkedInvestmentId: nil
-                            )
+                            saveQuota(scope: .thisAndFutureMonths)
                         }
-                        dismiss()
                     }
                     .disabled(quotaType == .investment
                               ? (store.investments.isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0)
                               : (name.trimmingCharacters(in: .whitespaces).isEmpty || (AppFormatters.parseAmount(unitPriceString) ?? 0.0) <= 0))
                 }
             }
-            .onAppear {
-                if let first = store.categories.first(where: { $0.type == .expense }) {
-                    selectedCategoryId = first.id
+            .confirmationDialog(
+                "Escopo da Alteração da Cota",
+                isPresented: $showEditScopeDialog,
+                titleVisibility: .visible
+            ) {
+                Button("Aplicar somente a este mês") {
+                    saveQuota(scope: .onlyThisMonth)
                 }
-                if let firstInv = store.investments.first {
-                    selectedInvestmentId = firstInv.id
+                Button("Aplicar a este e a todos os meses futuros") {
+                    saveQuota(scope: .thisAndFutureMonths)
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Esta cota possui recorrência ativa. Deseja aplicar somente a este mês ou aplicar a este e a todos os meses futuros?")
+            }
+            .onAppear {
+                if existingEnvelope == nil {
+                    if let first = store.categories.first(where: { $0.type == .expense }) {
+                        selectedCategoryId = first.id
+                    }
+                    if let firstInv = store.investments.first {
+                        selectedInvestmentId = firstInv.id
+                    }
                 }
             }
         }
+    }
+
+    private func saveQuota(scope: ProvisionEditScope) {
+        let unitPrice = AppFormatters.parseAmount(unitPriceString) ?? 0.0
+
+        if quotaType == .investment {
+            let inv = store.investments.first(where: { $0.id == selectedInvestmentId })
+            let finalName = "Aporte \(inv?.name ?? "Investimento")"
+            let fallbackCat = store.investmentDepositCategoryId()
+
+            store.saveCategoryQuota(
+                seriesId: existingEnvelope?.seriesId,
+                categoryId: fallbackCat,
+                name: finalName,
+                iconSymbol: inv?.iconSymbol ?? "chart.line.uptrend.xyaxis",
+                plannedQuantity: 1,
+                estimatedUnitPrice: unitPrice,
+                for: store.selectedMonth,
+                repeatForFutureMonths: repeatForFuture,
+                editScope: scope,
+                quotaType: .investment,
+                linkedInvestmentId: selectedInvestmentId
+            )
+        } else {
+            store.saveCategoryQuota(
+                seriesId: existingEnvelope?.seriesId,
+                categoryId: selectedCategoryId,
+                name: name,
+                iconSymbol: "shippingbox.fill",
+                plannedQuantity: plannedQuantity,
+                estimatedUnitPrice: unitPrice,
+                for: store.selectedMonth,
+                repeatForFutureMonths: repeatForFuture,
+                editScope: scope,
+                quotaType: .expense,
+                linkedInvestmentId: nil
+            )
+        }
+        dismiss()
     }
 }
 

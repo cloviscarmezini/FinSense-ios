@@ -18,6 +18,7 @@ public struct ProvisionsView: View {
     @State private var isAddProvisionPresented: Bool = false
     @State private var isAddQuotaPresented: Bool = false
     @State private var redeemingQuotaEnvelope: CategoryQuotaEnvelope? = nil
+    @State private var editingQuotaEnvelope: CategoryQuotaEnvelope? = nil
 
     public init(store: FinancialDataStore) {
         self.store = store
@@ -238,6 +239,9 @@ public struct ProvisionsView: View {
         }
         .sheet(item: $redeemingQuotaEnvelope) { env in
             RedeemQuotaSheet(store: store, envelope: env)
+        }
+        .sheet(item: $editingQuotaEnvelope) { env in
+            QuotaEditorSheet(store: store, existingEnvelope: env)
         }
     }
 
@@ -490,6 +494,17 @@ public struct ProvisionsView: View {
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 5)
                                     .background(Capsule().fill(Color(hex: isInvestment ? "#10B981" : "#0284C7")))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    editingQuotaEnvelope = env
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.secondary)
+                                        .padding(6)
+                                        .background(Circle().fill(Color.white.opacity(0.06)))
                                 }
                                 .buttonStyle(.plain)
                             }

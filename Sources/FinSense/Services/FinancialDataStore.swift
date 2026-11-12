@@ -1801,6 +1801,7 @@ public final class FinancialDataStore: ObservableObject {
 
             let overrideAmount = prov.monthlyOverrides?[ymKey]
             let estimated = overrideAmount ?? prov.estimatedAmount
+            guard estimated > 0 else { continue }
             let realized = transactionsForMonth(monthReference)
                 .filter { $0.categoryId == catId && $0.type == .expense && $0.linkedQuotaId == nil }
                 .reduce(0.0) { $0 + $1.amount }
@@ -1840,7 +1841,11 @@ public final class FinancialDataStore: ObservableObject {
 
         switch scope {
         case .allOccurrences:
+            let toDelete = provisions.filter { $0.categoryId == categoryId }
             provisions.removeAll { $0.categoryId == categoryId }
+            for p in toDelete {
+                cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: p.id, operation: .delete)
+            }
         case .onlyThisMonth:
             let candidates = provisions
                 .enumerated()
@@ -1858,20 +1863,39 @@ public final class FinancialDataStore: ObservableObject {
                     excluded.insert(targetKey)
                     provisions[idx].excludedYearMonthKeys = excluded
                     provisions[idx].monthlyOverrides?.removeValue(forKey: targetKey)
+                    let prov = provisions[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: prov.id, operation: .upsert, entity: prov)
                 } else if provisions[idx].yearMonthKey == targetKey {
+                    let deletedId = provisions[idx].id
                     provisions.remove(at: idx)
+                    cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: deletedId, operation: .delete)
                 }
             }
         case .fromThisMonthOnward:
+            let removedProvs = provisions.filter { $0.categoryId == categoryId && $0.yearMonthKey > targetKey }
             provisions.removeAll { $0.categoryId == categoryId && $0.yearMonthKey > targetKey }
+            for removed in removedProvs {
+                cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: removed.id, operation: .delete)
+            }
             for idx in provisions.indices where provisions[idx].categoryId == categoryId {
+                var changed = false
                 if var overrides = provisions[idx].monthlyOverrides {
-                    overrides = overrides.filter { $0.key < targetKey }
-                    provisions[idx].monthlyOverrides = overrides.isEmpty ? nil : overrides
+                    let filtered = overrides.filter { $0.key < targetKey }
+                    if filtered != overrides {
+                        provisions[idx].monthlyOverrides = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
                 }
                 if var excluded = provisions[idx].excludedYearMonthKeys {
-                    excluded = excluded.filter { $0 < targetKey }
-                    provisions[idx].excludedYearMonthKeys = excluded.isEmpty ? nil : excluded
+                    let filtered = excluded.filter { $0 < targetKey }
+                    if filtered != excluded {
+                        provisions[idx].excludedYearMonthKeys = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
+                }
+                if changed {
+                    let prov = provisions[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: prov.id, operation: .upsert, entity: prov)
                 }
             }
 
@@ -1888,8 +1912,12 @@ public final class FinancialDataStore: ObservableObject {
                 if hasPriorRecurring {
                     provisions[exactIdx].estimatedAmount = 0
                     provisions[exactIdx].repeatForFutureMonths = true
+                    let prov = provisions[exactIdx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: prov.id, operation: .upsert, entity: prov)
                 } else {
+                    let deletedId = provisions[exactIdx].id
                     provisions.remove(at: exactIdx)
+                    cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: deletedId, operation: .delete)
                 }
             } else if hasPriorRecurring {
                 let stopper = CategoryProvision(
@@ -1900,11 +1928,11 @@ public final class FinancialDataStore: ObservableObject {
                     repeatForFutureMonths: true
                 )
                 provisions.append(stopper)
+                cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: stopper.id, operation: .upsert, entity: stopper)
             }
         }
 
         saveToDisk()
-        cloudSyncService?.recordLocalMutation(entityName: "category_provisions", entityId: categoryId, operation: .delete)
     }
 
     public func createCategoryQuotaRule(
@@ -1990,6 +2018,7 @@ public final class FinancialDataStore: ObservableObject {
             let override = rule.monthlyOverrides?[ymKey]
             let planned = override?.plannedQuantity ?? rule.plannedQuantity
             let unitPrice = override?.estimatedUnitPrice ?? rule.estimatedUnitPrice
+            guard planned > 0 && unitPrice > 0 else { continue }
             let ruleName = override?.name ?? rule.name
 
             let linkedTxs = transactionsForMonth(monthReference).filter { tx in
@@ -2074,7 +2103,11 @@ public final class FinancialDataStore: ObservableObject {
 
         switch scope {
         case .allOccurrences:
+            let toDelete = categoryQuotas.filter { $0.seriesId == seriesId }
             categoryQuotas.removeAll { $0.seriesId == seriesId }
+            for r in toDelete {
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: r.id, operation: .delete)
+            }
         case .onlyThisMonth:
             let candidates = categoryQuotas
                 .enumerated()
@@ -2092,20 +2125,39 @@ public final class FinancialDataStore: ObservableObject {
                     excluded.insert(targetKey)
                     categoryQuotas[idx].excludedYearMonthKeys = excluded
                     categoryQuotas[idx].monthlyOverrides?.removeValue(forKey: targetKey)
+                    let rule = categoryQuotas[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
                 } else if categoryQuotas[idx].yearMonthKey == targetKey {
+                    let deletedId = categoryQuotas[idx].id
                     categoryQuotas.remove(at: idx)
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: deletedId, operation: .delete)
                 }
             }
         case .fromThisMonthOnward:
+            let removedRules = categoryQuotas.filter { $0.seriesId == seriesId && $0.yearMonthKey > targetKey }
             categoryQuotas.removeAll { $0.seriesId == seriesId && $0.yearMonthKey > targetKey }
+            for removed in removedRules {
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: removed.id, operation: .delete)
+            }
             for idx in categoryQuotas.indices where categoryQuotas[idx].seriesId == seriesId {
-                if var overrides = categoryQuotas[idx].monthlyOverrides {
-                    overrides = overrides.filter { $0.key < targetKey }
-                    categoryQuotas[idx].monthlyOverrides = overrides.isEmpty ? nil : overrides
+                var changed = false
+                if let overrides = categoryQuotas[idx].monthlyOverrides {
+                    let filtered = overrides.filter { $0.key < targetKey }
+                    if filtered != overrides {
+                        categoryQuotas[idx].monthlyOverrides = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
                 }
-                if var excluded = categoryQuotas[idx].excludedYearMonthKeys {
-                    excluded = excluded.filter { $0 < targetKey }
-                    categoryQuotas[idx].excludedYearMonthKeys = excluded.isEmpty ? nil : excluded
+                if let excluded = categoryQuotas[idx].excludedYearMonthKeys {
+                    let filtered = excluded.filter { $0 < targetKey }
+                    if filtered != excluded {
+                        categoryQuotas[idx].excludedYearMonthKeys = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
+                }
+                if changed {
+                    let rule = categoryQuotas[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
                 }
             }
 
@@ -2124,8 +2176,12 @@ public final class FinancialDataStore: ObservableObject {
                     categoryQuotas[exactIdx].plannedQuantity = 0
                     categoryQuotas[exactIdx].estimatedUnitPrice = 0
                     categoryQuotas[exactIdx].repeatForFutureMonths = true
+                    let rule = categoryQuotas[exactIdx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
                 } else {
+                    let deletedId = categoryQuotas[exactIdx].id
                     categoryQuotas.remove(at: exactIdx)
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: deletedId, operation: .delete)
                 }
             } else if hasPriorRecurring {
                 let template = categoryQuotas.first(where: { $0.seriesId == seriesId })
@@ -2138,14 +2194,166 @@ public final class FinancialDataStore: ObservableObject {
                     month: month,
                     plannedQuantity: 0,
                     estimatedUnitPrice: 0,
-                    repeatForFutureMonths: true
+                    repeatForFutureMonths: true,
+                    quotaType: template?.quotaType ?? .expense,
+                    linkedInvestmentId: template?.linkedInvestmentId
                 )
                 categoryQuotas.append(stopper)
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: stopper.id, operation: .upsert, entity: stopper)
             }
         }
 
         saveToDisk()
-        cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: seriesId, operation: .delete)
+    }
+
+    /// Cria ou atualiza uma Cota de Item Específico com suporte a escopo temporal e sincronização
+    @discardableResult
+    public func saveCategoryQuota(
+        seriesId: UUID? = nil,
+        categoryId: UUID,
+        name: String,
+        iconSymbol: String? = nil,
+        plannedQuantity: Int,
+        estimatedUnitPrice: Double,
+        for monthReference: Date,
+        repeatForFutureMonths: Bool,
+        editScope: ProvisionEditScope = .thisAndFutureMonths,
+        quotaType: QuotaType = .expense,
+        linkedInvestmentId: UUID? = nil
+    ) -> CategoryQuotaRule {
+        let year = calendar.component(.year, from: monthReference)
+        let month = calendar.component(.month, from: monthReference)
+        let targetKey = year * 100 + month
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanQty = max(1, plannedQuantity)
+        let cleanPrice = max(0.0, estimatedUnitPrice)
+        let resolvedIcon: String = {
+            if let iconSymbol = iconSymbol, !iconSymbol.isEmpty { return iconSymbol }
+            if quotaType == .investment, let invId = linkedInvestmentId, let inv = investments.first(where: { $0.id == invId }) {
+                return inv.iconSymbol
+            }
+            return "shippingbox.fill"
+        }()
+
+        if let existingSeriesId = seriesId,
+           categoryQuotas.contains(where: { $0.seriesId == existingSeriesId }) {
+            if editScope == .onlyThisMonth {
+                let candidates = categoryQuotas
+                    .enumerated()
+                    .filter { $0.element.seriesId == existingSeriesId && $0.element.yearMonthKey <= targetKey }
+                    .sorted { a, b in
+                        if a.element.yearMonthKey == b.element.yearMonthKey {
+                            return a.element.createdAt < b.element.createdAt
+                        }
+                        return a.element.yearMonthKey < b.element.yearMonthKey
+                    }
+
+                if let latest = candidates.last {
+                    let idx = latest.offset
+                    if categoryQuotas[idx].yearMonthKey == targetKey && !categoryQuotas[idx].repeatForFutureMonths {
+                        categoryQuotas[idx].name = cleanName
+                        categoryQuotas[idx].iconSymbol = resolvedIcon
+                        categoryQuotas[idx].plannedQuantity = cleanQty
+                        categoryQuotas[idx].estimatedUnitPrice = cleanPrice
+                        categoryQuotas[idx].quotaType = quotaType
+                        categoryQuotas[idx].linkedInvestmentId = linkedInvestmentId
+                    } else {
+                        var overrides = categoryQuotas[idx].monthlyOverrides ?? [:]
+                        overrides[targetKey] = CategoryQuotaMonthlyOverride(
+                            name: cleanName,
+                            plannedQuantity: cleanQty,
+                            estimatedUnitPrice: cleanPrice
+                        )
+                        categoryQuotas[idx].monthlyOverrides = overrides
+                        categoryQuotas[idx].excludedYearMonthKeys?.remove(targetKey)
+                    }
+                    saveToDisk()
+                    let rule = categoryQuotas[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
+                    return rule
+                }
+            }
+
+            // Escopo: .thisAndFutureMonths
+            let removedRules = categoryQuotas.filter { $0.seriesId == existingSeriesId && $0.yearMonthKey > targetKey }
+            categoryQuotas.removeAll { $0.seriesId == existingSeriesId && $0.yearMonthKey > targetKey }
+            for removed in removedRules {
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: removed.id, operation: .delete)
+            }
+            for idx in categoryQuotas.indices where categoryQuotas[idx].seriesId == existingSeriesId {
+                var changed = false
+                if let overrides = categoryQuotas[idx].monthlyOverrides {
+                    let filtered = overrides.filter { $0.key < targetKey }
+                    if filtered != overrides {
+                        categoryQuotas[idx].monthlyOverrides = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
+                }
+                if let excluded = categoryQuotas[idx].excludedYearMonthKeys {
+                    let filtered = excluded.filter { $0 < targetKey }
+                    if filtered != excluded {
+                        categoryQuotas[idx].excludedYearMonthKeys = filtered.isEmpty ? nil : filtered
+                        changed = true
+                    }
+                }
+                if changed {
+                    let rule = categoryQuotas[idx]
+                    cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
+                }
+            }
+
+            if let exactIdx = categoryQuotas.firstIndex(where: {
+                $0.seriesId == existingSeriesId && $0.year == year && $0.month == month
+            }) {
+                categoryQuotas[exactIdx].name = cleanName
+                categoryQuotas[exactIdx].iconSymbol = resolvedIcon
+                categoryQuotas[exactIdx].plannedQuantity = cleanQty
+                categoryQuotas[exactIdx].estimatedUnitPrice = cleanPrice
+                categoryQuotas[exactIdx].repeatForFutureMonths = repeatForFutureMonths
+                categoryQuotas[exactIdx].quotaType = quotaType
+                categoryQuotas[exactIdx].linkedInvestmentId = linkedInvestmentId
+                saveToDisk()
+                let rule = categoryQuotas[exactIdx]
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: rule.id, operation: .upsert, entity: rule)
+                return rule
+            } else {
+                let updatedFutureRule = CategoryQuotaRule(
+                    seriesId: existingSeriesId,
+                    categoryId: categoryId,
+                    name: cleanName,
+                    iconSymbol: resolvedIcon,
+                    year: year,
+                    month: month,
+                    plannedQuantity: cleanQty,
+                    estimatedUnitPrice: cleanPrice,
+                    repeatForFutureMonths: repeatForFutureMonths,
+                    quotaType: quotaType,
+                    linkedInvestmentId: linkedInvestmentId
+                )
+                categoryQuotas.append(updatedFutureRule)
+                saveToDisk()
+                cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: updatedFutureRule.id, operation: .upsert, entity: updatedFutureRule)
+                return updatedFutureRule
+            }
+        }
+
+        let newRule = CategoryQuotaRule(
+            seriesId: seriesId,
+            categoryId: categoryId,
+            name: cleanName,
+            iconSymbol: resolvedIcon,
+            year: year,
+            month: month,
+            plannedQuantity: cleanQty,
+            estimatedUnitPrice: cleanPrice,
+            repeatForFutureMonths: repeatForFutureMonths,
+            quotaType: quotaType,
+            linkedInvestmentId: linkedInvestmentId
+        )
+        categoryQuotas.append(newRule)
+        saveToDisk()
+        cloudSyncService?.recordLocalMutation(entityName: "category_quota_rules", entityId: newRule.id, operation: .upsert, entity: newRule)
+        return newRule
     }
 
     public func calculateQuotaEnvelopes(for month: Date) -> [CategoryQuotaEnvelope] {
