@@ -325,4 +325,191 @@ final class FinSenseTests: XCTestCase {
             XCTFail("Status de sincronização deveria ser .disabled para usuário não autenticado")
         }
     }
+
+    // MARK: - Unified Financial KPI Architecture & Card Refactoring Tests
+
+    @MainActor
+    func testUnifiedFinancialKPISummaryCalculations() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        store.createAccount(name: "Conta Corrente", initialBalance: 10000.0)
+        let accountId = store.accounts.first!.id
+        let categoryId = store.categories.first!.id
+
+        let now = Date()
+
+        // 1. Receitas: Habituais e Extraordinárias
+        _ = store.createTransaction(
+            name: "Salário Mensal",
+            amount: 5000.0,
+            date: now,
+            type: .income,
+            isPaid: true,
+            categoryId: categoryId,
+            accountId: accountId
+        )
+        _ = store.createTransaction(
+            name: "Freelance Previsto",
+            amount: 3000.0,
+            date: now,
+            type: .income,
+            isPaid: false,
+            categoryId: categoryId,
+            accountId: accountId
+        )
+        _ = store.createTransaction(
+            name: "13º Salário",
+            amount: 2000.0,
+            date: now,
+            type: .income,
+            isPaid: true,
+            categoryId: categoryId,
+            accountId: accountId
+        )
+
+        // 2. Despesas: Fixas e Variáveis
+        _ = store.createTransaction(
+            name: "Aluguel Mensal",
+            amount: 2500.0,
+            date: now,
+            type: .expense,
+            isPaid: true,
+            categoryId: categoryId,
+            accountId: accountId
+        )
+        _ = store.createTransaction(
+            name: "Compras Mercado",
+            amount: 1500.0,
+            date: now,
+            type: .expense,
+            isPaid: false,
+            categoryId: categoryId,
+            accountId: accountId
+        )
+
+        // 3. Tetos e Cotas
+        let cal = store.calendar
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+        store.setProvision(categoryId: categoryId, year: year, month: month, amount: 800.0, repeatForFuture: true)
+        store.createQuota(categoryId: categoryId, name: "Botijão de Gás", year: year, month: month, quantity: 2, unitPrice: 100.0, repeatForFuture: true)
+
+        let summary = store.buildUnifiedFinancialKPISummary(referenceDate: now, isAnnual: false, referenceNow: now)
+
+        // Validação de Receitas
+        XCTAssertEqual(summary.receivedIncome, 7000.0)
+        XCTAssertEqual(summary.pendingIncome, 3000.0)
+        XCTAssertEqual(summary.projectedIncome, 10000.0)
+        XCTAssertEqual(summary.habitualIncome, 8000.0)
+        XCTAssertEqual(summary.extraordinaryIncome, 2000.0)
+
+        // Validação de Despesas
+        XCTAssertEqual(summary.paidExpense, 2500.0)
+        XCTAssertEqual(summary.pendingExpense, 1500.0)
+        XCTAssertEqual(summary.recordedExpense, 4000.0)
+        XCTAssertEqual(summary.fixedExpenses, 2500.0)
+        XCTAssertEqual(summary.variableExpenses, 1500.0)
+
+        // Validação de Orçamentos e Cotas
+        XCTAssertEqual(summary.categoryCeilingsRemaining, 800.0)
+        XCTAssertEqual(summary.specificQuotasRemaining, 200.0)
+        XCTAssertEqual(summary.remainingBudgetsAndQuotas, 1000.0)
+
+        // Validação de Gastos Planejados e Sobra
+        XCTAssertEqual(summary.totalPlannedExpenses, 5000.0)
+        XCTAssertEqual(summary.surplusAfterPlanning, 5000.0)
+
+        // Validação de Saldo Bancário
+        XCTAssertEqual(summary.currentAccountBalanceNow, 10000.0 + 7000.0 - 2500.0)
+        XCTAssertEqual(summary.projectedAccountBalance, 10000.0 + 10000.0 - 4000.0)
+        XCTAssertEqual(summary.balanceIfAllBudgetsConsumed, summary.projectedAccountBalance - 1000.0)
+    }
+
+    @MainActor
+    func testForwardDeletionScopeForCategoryProvision() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let categoryId = store.categories.first!.id
+        let cal = store.calendar
+        let now = Date()
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+
+        // Cria provisão recorrente no mês M
+        store.setProvision(categoryId: categoryId, year: year, month: month, amount: 600.0, repeatForFuture: true)
+
+        let envMonthM = store.provisionEnvelopes(for: now).first { $0.category.id == categoryId }
+        XCTAssertNotNil(envMonthM)
+        XCTAssertEqual(envMonthM?.estimatedAmount, 600.0)
+
+        // Exclui a partir do mês seguinte M+1 em diante
+        let nextMonth = cal.date(byAdding: .month, value: 1, to: now)!
+        store.deleteCategoryProvision(categoryId: categoryId, for: nextMonth, scope: .fromThisMonthOnward)
+
+        // No mês M, o teto deve ser preservado intacto
+        let envStillM = store.provisionEnvelopes(for: now).first { $0.category.id == categoryId }
+        XCTAssertNotNil(envStillM)
+        XCTAssertEqual(envStillM?.estimatedAmount, 600.0)
+
+        // No mês M+1 e M+2, o teto deve estar encerrado (0.0 ou ausente)
+        let envMonthM1 = store.provisionEnvelopes(for: nextMonth).first { $0.category.id == categoryId }
+        XCTAssertTrue(envMonthM1 == nil || envMonthM1?.estimatedAmount == 0.0)
+
+        let monthM2 = cal.date(byAdding: .month, value: 2, to: now)!
+        let envMonthM2 = store.provisionEnvelopes(for: monthM2).first { $0.category.id == categoryId }
+        XCTAssertTrue(envMonthM2 == nil || envMonthM2?.estimatedAmount == 0.0)
+    }
+
+    @MainActor
+    func testForwardDeletionScopeForCategoryQuota() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let categoryId = store.categories.first!.id
+        let cal = store.calendar
+        let now = Date()
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+
+        store.createQuota(categoryId: categoryId, name: "Água Mineral", year: year, month: month, quantity: 4, unitPrice: 20.0, repeatForFuture: true)
+
+        let initialQuota = store.calculateQuotaEnvelopes(for: now).first { $0.name == "Água Mineral" }
+        XCTAssertNotNil(initialQuota)
+        let seriesId = initialQuota!.seriesId
+
+        // Exclui deste mês em diante a partir de M+1
+        let nextMonth = cal.date(byAdding: .month, value: 1, to: now)!
+        store.deleteCategoryQuota(seriesId: seriesId, for: nextMonth, scope: .fromThisMonthOnward)
+
+        // No mês M, a cota deve ser mantida
+        let envM = store.calculateQuotaEnvelopes(for: now).first { $0.seriesId == seriesId }
+        XCTAssertNotNil(envM)
+        XCTAssertEqual(envM?.plannedQuantity, 4)
+
+        // No mês M+1, a cota deve estar encerrada (0 unidades)
+        let envM1 = store.calculateQuotaEnvelopes(for: nextMonth).first { $0.seriesId == seriesId }
+        XCTAssertTrue(envM1 == nil || envM1?.plannedQuantity == 0)
+    }
+
+    @MainActor
+    func testPerennialAuthenticationRetention() throws {
+        let auth = AuthService()
+        // Define tokens e marca sessão ativa
+        UserDefaults.standard.set("mock_token_abc", forKey: "finsense_auth_access_token")
+        UserDefaults.standard.set("mock_refresh_123", forKey: "finsense_auth_refresh_token")
+        UserDefaults.standard.set("mock_token_abc", forKey: "finsense_auth_access_token_backup")
+        UserDefaults.standard.set("mock_refresh_123", forKey: "finsense_auth_refresh_token_backup")
+        UserDefaults.standard.set(true, forKey: "finsense_auth_session_is_active")
+
+        auth.restoreSession()
+        XCTAssertTrue(auth.isAuthenticated)
+
+        // Simula perda da chave primária (ex: falha transitória de keychain ou limpeza de cache)
+        UserDefaults.standard.removeObject(forKey: "finsense_auth_access_token")
+        auth.restoreSession()
+
+        // Graças ao backup persistente e sessionActiveKey, a sessão permanece PERENE
+        XCTAssertTrue(auth.isAuthenticated)
+
+        // Limpeza final de teste
+        Task {
+            await auth.logout()
+        }
+    }
 }

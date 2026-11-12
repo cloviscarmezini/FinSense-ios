@@ -107,6 +107,7 @@ public enum TransactionOrigin: String, Codable, CaseIterable, Identifiable, Hash
     case investmentRedemption
     case debtPayment
     case quotaAllocation
+    case internalTransfer
 
     public var id: String { rawValue }
 }
@@ -315,6 +316,36 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
             ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
+    }
+
+    /// Identifica se a receita possui natureza extraordinária (ex: 13º salário, bônus, PLR, restituição de IR, rescisão).
+    public var isExtraordinaryIncome: Bool {
+        guard type == .income else { return false }
+        let text = "\(name) \(details) \(rawStatementLine ?? "")"
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let keywords = [
+            "13", "decimo terceiro", "bonus", "plr",
+            "participacao nos lucros", "restituicao", "rescisao",
+            "extraordinari", "heranca", "premio", "premiacao"
+        ]
+        return keywords.contains { text.contains($0) }
+    }
+
+    /// Identifica se a despesa é de natureza fixa / recorrente (assinaturas, financiamento, aluguel, condomínio, etc.)
+    public var isFixedExpense: Bool {
+        guard type == .expense else { return false }
+        if recurrenceMode == .recurring { return true }
+        if linkedContractId != nil { return true }
+        let text = "\(name) \(details)"
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let keywords = ["fixa", "fixo", "recorrente", "assinatura", "aluguel", "condominio", "plano", "mensalidade", "prestacao", "parcela"]
+        return keywords.contains { text.contains($0) }
+    }
+
+    /// Despesas de consumo variável / avulsas
+    public var isVariableExpense: Bool {
+        guard type == .expense else { return false }
+        return !isFixedExpense
     }
 
     public func encode(to encoder: Encoder) throws {

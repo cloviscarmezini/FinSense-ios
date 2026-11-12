@@ -6,6 +6,8 @@ public struct CategoryQuotasView: View {
     @State private var isAddQuotaPresented: Bool = false
     @State private var isMonthPickerPresented: Bool = false
     @State private var redeemingEnvelope: CategoryQuotaEnvelope? = nil
+    @State private var pendingDeleteQuotaEnvelope: CategoryQuotaEnvelope? = nil
+    @State private var showDeleteQuotaConfirmation: Bool = false
 
     public init(store: FinancialDataStore) {
         self.store = store
@@ -169,6 +171,14 @@ public struct CategoryQuotasView: View {
                                     }
                                 }
                             }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    pendingDeleteQuotaEnvelope = env
+                                    showDeleteQuotaConfirmation = true
+                                } label: {
+                                    Label("Excluir Cota", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
@@ -196,6 +206,31 @@ public struct CategoryQuotasView: View {
         }
         .sheet(item: $redeemingEnvelope) { env in
             RedeemQuotaSheet(store: store, envelope: env)
+        }
+        .confirmationDialog(
+            "Excluir Cota: \(pendingDeleteQuotaEnvelope?.name ?? "")",
+            isPresented: $showDeleteQuotaConfirmation,
+            titleVisibility: .visible
+        ) {
+            if let env = pendingDeleteQuotaEnvelope {
+                Button("Excluir somente deste mês") {
+                    store.deleteCategoryQuota(seriesId: env.seriesId, for: store.selectedMonth, scope: .onlyThisMonth)
+                    pendingDeleteQuotaEnvelope = nil
+                }
+                Button("Excluir deste mês em diante") {
+                    store.deleteCategoryQuota(seriesId: env.seriesId, for: store.selectedMonth, scope: .fromThisMonthOnward)
+                    pendingDeleteQuotaEnvelope = nil
+                }
+                Button("Excluir todas as ocorrências", role: .destructive) {
+                    store.deleteCategoryQuota(seriesId: env.seriesId, for: store.selectedMonth, scope: .allOccurrences)
+                    pendingDeleteQuotaEnvelope = nil
+                }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteQuotaEnvelope = nil
+            }
+        } message: {
+            Text("Deseja remover esta cota somente deste mês, deste mês em diante (preservando o histórico anterior) ou excluir todas as ocorrências?")
         }
     }
 }

@@ -108,3 +108,97 @@ public struct LiquidGlassCard<Content: View>: View {
             .liquidGlassCard(cornerRadius: cornerRadius, padding: padding)
     }
 }
+
+// MARK: - Reusable Liquid Glass KPI Card (Strict Vertical Alignment for Mobile Grids)
+
+public struct LiquidKPICard: View {
+    public let title: String
+    public let value: String
+    public var valueColor: Color? = nil
+    public let subtitle: String
+    public var customSubtitle: Text? = nil
+    public let icon: String
+    public let tint: Color
+    public var footnote: String? = nil
+    public var footnoteColor: Color? = nil
+    public var cardHeight: CGFloat = 132
+
+    public init(
+        title: String,
+        value: String,
+        valueColor: Color? = nil,
+        subtitle: String = "",
+        customSubtitle: Text? = nil,
+        icon: String,
+        tint: Color,
+        footnote: String? = nil,
+        footnoteColor: Color? = nil,
+        cardHeight: CGFloat = 132
+    ) {
+        self.title = title
+        self.value = value
+        self.valueColor = valueColor
+        self.subtitle = subtitle
+        self.customSubtitle = customSubtitle
+        self.icon = icon
+        self.tint = tint
+        self.footnote = footnote
+        self.footnoteColor = footnoteColor
+        self.cardHeight = cardHeight
+    }
+
+    public var body: some View {
+        LiquidGlassCard(cornerRadius: 18, padding: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                // 1. Cabeçalho com altura estritamente padronizada
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(tint)
+
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(Color.secondary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+
+                    Spacer(minLength: 0)
+                }
+                .frame(height: 32, alignment: .top)
+
+                // 2. Valor Principal em Destaque
+                Text(value)
+                    .font(.system(size: 16.5, weight: .bold, design: .rounded))
+                    .foregroundStyle(valueColor ?? .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .monospacedDigit()
+
+                // 3. Subtítulo (com altura fixa para manter alinhamento rigoroso)
+                Group {
+                    if let customSubtitle {
+                        customSubtitle
+                    } else {
+                        Text(subtitle)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .font(.system(size: 9.5))
+                .lineLimit(2)
+                .frame(height: 26, alignment: .topLeading)
+
+                Spacer(minLength: 0)
+
+                // 4. Rodapé
+                if let footnote {
+                    Text(footnote)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(footnoteColor ?? .secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: cardHeight, alignment: .topLeading)
+        }
+    }
+}

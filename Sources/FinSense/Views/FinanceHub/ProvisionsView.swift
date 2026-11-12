@@ -476,6 +476,7 @@ public struct ProvisionEditorSheet: View {
     @State private var selectedCategoryId: UUID
     @State private var amountString: String = ""
     @State private var repeatForFuture: Bool = true
+    @State private var showDeleteConfirmation: Bool = false
 
     public init(store: FinancialDataStore, category: CategoryItem? = nil) {
         self.store = store
@@ -541,20 +542,9 @@ public struct ProvisionEditorSheet: View {
                 if category != nil {
                     Section {
                         Button(role: .destructive) {
-                            let cal = store.calendar
-                            let year = cal.component(.year, from: store.selectedMonth)
-                            let month = cal.component(.month, from: store.selectedMonth)
-                            let catId = category!.id
-
-                            if let existing = store.provisions.first(where: { $0.categoryId == catId && $0.year == year && $0.month == month }) {
-                                store.deleteProvision(existing.id)
-                            } else {
-                                // Se for herdado de mês anterior, podemos setar 0 ou desativar
-                                store.setProvision(categoryId: catId, year: year, month: month, amount: 0, repeatForFuture: false)
-                            }
-                            dismiss()
+                            showDeleteConfirmation = true
                         } label: {
-                            Text("Excluir Teto deste Mês")
+                            Text("Excluir Teto de Gastos")
                                 .frame(maxWidth: .infinity, alignment: .center)
                         }
                     }
@@ -562,6 +552,28 @@ public struct ProvisionEditorSheet: View {
             }
             .navigationTitle("Definir Meta de Teto")
             .navigationBarTitleDisplayMode(.inline)
+            .confirmationDialog(
+                "Excluir Teto: \(category?.name ?? "")",
+                isPresented: $showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                let catId = category?.id ?? selectedCategoryId
+                Button("Excluir somente deste mês") {
+                    store.deleteCategoryProvision(categoryId: catId, for: store.selectedMonth, scope: .onlyThisMonth)
+                    dismiss()
+                }
+                Button("Excluir deste mês em diante") {
+                    store.deleteCategoryProvision(categoryId: catId, for: store.selectedMonth, scope: .fromThisMonthOnward)
+                    dismiss()
+                }
+                Button("Excluir todas as ocorrências", role: .destructive) {
+                    store.deleteCategoryProvision(categoryId: catId, for: store.selectedMonth, scope: .allOccurrences)
+                    dismiss()
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Deseja remover o teto desta categoria somente deste mês, deste mês em diante (preservando o histórico anterior) ou excluir todas as ocorrências?")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }

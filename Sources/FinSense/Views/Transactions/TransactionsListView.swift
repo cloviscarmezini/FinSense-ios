@@ -282,28 +282,29 @@ public struct TransactionsListView: View {
 
     // MARK: - Cards Resumo do Filtro
     private var filterSummaryCards: some View {
+        let summary = store.buildUnifiedFinancialKPISummary(referenceDate: store.selectedMonth, isAnnual: false)
+
         let (leftTitle, leftAmount, leftColor, leftIcon, rightTitle, rightAmount, rightColor, rightIcon): (String, Double, String, String, String, Double, String, String) = {
             switch selectedFilter {
             case .all:
-                let net = store.monthlyNetBalance(for: store.selectedMonth)
                 return (
-                    "Balanço atual", store.totalCheckingBalanceNow, "#0284C7", "building.columns.fill",
-                    "Balanço do mês", net, net >= 0 ? "#10B981" : "#EF4444", "chart.line.uptrend.xyaxis"
+                    "Saldo em contas", summary.currentAccountBalanceNow, "#0284C7", "building.columns.fill",
+                    summary.isPast ? "Resultado fechado" : "Balanço do mês", summary.transactionsNetBalance, summary.transactionsNetBalance >= 0 ? "#10B981" : "#EF4444", "chart.line.uptrend.xyaxis"
                 )
             case .expenses:
                 return (
-                    "Total pago", store.monthlyPaidExpense(for: store.selectedMonth), "#EF4444", "creditcard.fill",
-                    "Total pendente", store.monthlyPendingExpenses(for: store.selectedMonth), "#F59E0B", "clock.fill"
+                    "Total pago", summary.paidExpense, "#EF4444", "creditcard.fill",
+                    "Total pendente", summary.pendingExpense, summary.pendingExpense > 0 ? "#EF4444" : "#10B981", "clock.fill"
                 )
             case .incomes:
                 return (
-                    "Total de receitas", store.monthlyIncome(for: store.selectedMonth), "#10B981", "arrow.down.left.circle.fill",
-                    "Total Recebido", store.monthlyReceivedIncome(for: store.selectedMonth), "#059669", "checkmark.circle.fill"
+                    "Total de receitas", summary.projectedIncome, "#10B981", "arrow.down.left.circle.fill",
+                    "Total recebido", summary.receivedIncome, "#059669", "checkmark.circle.fill"
                 )
             case .pending:
                 return (
-                    "Despesas pendentes", store.monthlyPendingExpenses(for: store.selectedMonth), "#EF4444", "exclamationmark.circle.fill",
-                    "Receitas pendentes", store.monthlyPendingIncome(for: store.selectedMonth), "#10B981", "hourglass"
+                    "Despesas pendentes", summary.pendingExpense, "#EF4444", "exclamationmark.circle.fill",
+                    "Receitas pendentes", summary.pendingIncome, "#10B981", "hourglass"
                 )
             }
         }()
@@ -318,7 +319,7 @@ public struct TransactionsListView: View {
 
     private func summaryMiniCard(title: String, amount: Double, colorHex: String, icon: String) -> some View {
         LiquidGlassCard(cornerRadius: 16, padding: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 5) {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .bold))
@@ -334,6 +335,7 @@ public struct TransactionsListView: View {
                     .foregroundStyle(Color.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .monospacedDigit()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

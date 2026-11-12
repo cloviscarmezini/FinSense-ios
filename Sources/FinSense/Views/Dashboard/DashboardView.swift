@@ -239,137 +239,148 @@ public struct DashboardView: View {
         }
     }
 
-    // MARK: - 4 Lifecycle KPI Cards
+    // MARK: - 6 Unified Financial KPI Cards (Mobile Edition)
     private var kpiCardsGrid: some View {
-        let periodIncome = isAnnual
-            ? store.annualIncome(for: store.selectedMonth)
-            : store.monthlyIncome(for: store.selectedMonth)
-        let periodReceivedIncome = isAnnual
-            ? store.annualReceivedIncome(for: store.selectedMonth)
-            : store.monthlyReceivedIncome(for: store.selectedMonth)
-        let periodPendingIncome = isAnnual
-            ? store.annualPendingIncome(for: store.selectedMonth)
-            : store.monthlyPendingIncome(for: store.selectedMonth)
-
-        let periodExpense = isAnnual
-            ? store.annualExpense(for: store.selectedMonth)
-            : store.monthlyExpense(for: store.selectedMonth)
-        let periodPaidExpense = isAnnual
-            ? store.annualPaidExpense(for: store.selectedMonth)
-            : store.monthlyPaidExpense(for: store.selectedMonth)
-        let periodPendingExpense = isAnnual
-            ? store.annualPendingExpense(for: store.selectedMonth)
-            : store.monthlyPendingExpense(for: store.selectedMonth)
-
-        let periodNet = periodIncome - periodExpense
-        let savingsRate: Double? = periodIncome > 0 ? ((periodNet / periodIncome) * 100.0) : nil
-
-        let accumulatedBalance = isAnnual
-            ? store.accumulatedConsolidatedBalanceThroughYear(store.selectedMonth)
-            : store.accumulatedConsolidatedBalance(throughMonth: store.selectedMonth)
-
-        let finalTitle = isAnnual
-            ? (isPastPeriod ? "Resultado Consolidado" : "Saldo Previsto 31/12/\(yearString)")
-            : store.monthEndBalanceCardTitle(for: store.selectedMonth)
-
-        let finalSubtitle = store.deductionSubtitleForProjectedBalance(
-            periodMode: store.dashboardPeriodMode,
-            selectedMonth: store.selectedMonth
+        let summary = store.buildUnifiedFinancialKPISummary(
+            referenceDate: store.selectedMonth,
+            isAnnual: isAnnual
         )
 
-        let operationalSubtitle: String = {
-            if let rate = savingsRate {
-                return rate >= 0
-                    ? String(format: "%.1f%% sobre receitas", rate)
-                    : String(format: "Déficit (%.1f%%)", abs(rate))
-            } else {
-                return periodNet >= 0 ? "Superávit operacional" : "Déficit operacional"
+        // Card 1 — Receitas Previstas
+        let incomeTitle = isAnnual ? "Receitas do Ano" : (summary.isPast ? "Receitas Realizadas" : "Receitas Previstas")
+        let incomeSubtitle = "\(AppFormatters.currency(summary.receivedIncome)) rec. • \(AppFormatters.currency(summary.pendingIncome)) pend."
+        let incomeFootnote = summary.extraordinaryIncome > 0
+            ? "Hab: \(AppFormatters.currency(summary.habitualIncome)) • Ext: \(AppFormatters.currency(summary.extraordinaryIncome))"
+            : "Receitas habituais da rotina"
+
+        // Card 2 — Despesas Lançadas
+        let expenseTitle = isAnnual ? "Despesas do Ano" : (summary.isPast ? "Despesas Realizadas" : "Despesas Lançadas")
+        let paidStr = "\(AppFormatters.currency(summary.paidExpense)) pagas"
+        let pendingStr = "\(AppFormatters.currency(summary.pendingExpense)) pendentes"
+        let expenseCustomSubtitle = Text("\(paidStr) • ").foregroundColor(.secondary) + Text(pendingStr).foregroundColor(Color(hex: "#EF4444"))
+        let expenseFootnote = "Fixas: \(AppFormatters.currency(summary.fixedExpenses)) • Var: \(AppFormatters.currency(summary.variableExpenses))"
+
+        // Card 3 — Orçamentos e Cotas Restantes
+        let budgetsTitle = "Orçamentos e Cotas"
+        let budgetsSubtitle = "Tetos: \(AppFormatters.currency(summary.categoryCeilingsRemaining)) • Cotas: \(AppFormatters.currency(summary.specificQuotasRemaining))"
+        let budgetsFootnote = summary.hasBudgetOverrun ? "Alerta de orçamento ultrapassado" : "Reserva planejada restante"
+        let budgetsFootnoteColor = summary.hasBudgetOverrun ? Color(hex: "#EF4444") : Color.secondary
+        let budgetsTint = summary.hasBudgetOverrun ? Color(hex: "#EF4444") : Color(hex: "#8B5CF6")
+
+        // Card 4 — Total de Gastos Planejados
+        let plannedTitle = "Total Planejado"
+        let plannedSubtitle = "\(AppFormatters.currency(summary.recordedExpense)) desp. + \(AppFormatters.currency(summary.remainingBudgetsAndQuotas)) orç."
+        let plannedFootnote = "Teto máximo planejado"
+
+        // Card 5 — Sobra Após Planejamento
+        let surplusTitle = "Sobra Planejada"
+        let surplusSubtitle = summary.surplusAfterPlanning >= 0 ? "Superávit após despesas e tetos" : "Déficit após despesas e tetos"
+        let surplusFootnote = summary.surplusAfterPlanning >= 0 ? "Planejamento sustentável" : "Ajuste de gastos recomendado"
+        let surplusColor = summary.surplusAfterPlanning >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+
+        // Card 6 — Saldo Previsto na Conta
+        let projectedBalanceValue = summary.isPast
+            ? summary.projectedAccountBalance
+            : summary.balanceIfAllBudgetsConsumed
+
+        let projectedBalanceTint = (summary.isPast ? summary.projectedAccountBalance : summary.balanceIfAllBudgetsConsumed) >= 0
+            ? Color(hex: "#10B981")
+            : Color(hex: "#EF4444")
+
+        let accountCustomSubtitle: Text = {
+            if summary.isPast {
+                return Text("Saldo final histórico conciliado").foregroundColor(.secondary)
             }
+            let prefix = "Se não usar o orçamento: "
+            let valueStr = AppFormatters.currency(summary.projectedAccountBalance)
+            let amountColor = summary.projectedAccountBalance >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+            return Text(prefix).foregroundColor(.secondary) + Text(valueStr).foregroundColor(amountColor)
         }()
 
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            // Card 1: Receitas
-            kpiCard(
-                title: isAnnual ? "Receitas do Ano" : "Receitas do Mês",
-                value: AppFormatters.currency(periodIncome),
-                subtitle: "\(AppFormatters.currency(periodReceivedIncome)) rec. • \(AppFormatters.currency(periodPendingIncome)) pend.",
+        let accountFootnote: String = {
+            if summary.isPast {
+                return "Resultado final registrado"
+            }
+            if projectedBalanceValue < 0 {
+                return "Alerta: Risco de caixa negativo"
+            }
+            return "Saldo projetado em conta"
+        }()
+
+        let accountFootnoteColor: Color = {
+            if summary.isPast { return .secondary }
+            return projectedBalanceValue >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+        }()
+
+        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            // 1. Receitas Previstas
+            LiquidKPICard(
+                title: incomeTitle,
+                value: AppFormatters.currency(summary.projectedIncome),
+                subtitle: incomeSubtitle,
                 icon: "arrow.down.left.circle.fill",
-                tint: Color(hex: "#10B981")
+                tint: Color(hex: "#10B981"),
+                footnote: incomeFootnote,
+                footnoteColor: .secondary
             )
 
-            // Card 2: Despesas
-            kpiCard(
-                title: isAnnual ? "Despesas do Ano" : "Despesas do Mês",
-                value: AppFormatters.currency(periodExpense),
-                subtitle: "\(AppFormatters.currency(periodPaidExpense)) pagas • \(AppFormatters.currency(periodPendingExpense)) pend.",
+            // 2. Despesas Lançadas (com pendentes em vermelho)
+            LiquidKPICard(
+                title: expenseTitle,
+                value: AppFormatters.currency(summary.recordedExpense),
+                customSubtitle: expenseCustomSubtitle,
                 icon: "arrow.up.right.circle.fill",
-                tint: Color(hex: "#EF4444")
+                tint: Color(hex: "#EF4444"),
+                footnote: expenseFootnote,
+                footnoteColor: .secondary
             )
 
-            // Card 3: Balanço Operacional
-            kpiCard(
-                title: "Balanço Operacional",
-                value: AppFormatters.currency(periodNet),
-                subtitle: operationalSubtitle,
-                icon: "equal.circle.fill",
-                tint: periodNet >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+            // 3. Orçamentos e Cotas Restantes
+            LiquidKPICard(
+                title: budgetsTitle,
+                value: AppFormatters.currency(summary.remainingBudgetsAndQuotas),
+                subtitle: budgetsSubtitle,
+                icon: "archivebox.circle.fill",
+                tint: budgetsTint,
+                footnote: budgetsFootnote,
+                footnoteColor: budgetsFootnoteColor
             )
 
-            // Card 4: Saldo Projetado
-            kpiCard(
-                title: finalTitle,
-                value: AppFormatters.currency(accumulatedBalance),
-                subtitle: finalSubtitle,
-                icon: isPastPeriod ? "checkmark.seal.fill" : "chart.line.uptrend.xyaxis",
-                tint: accumulatedBalance >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444"),
-                alertText: (!isPastPeriod && accumulatedBalance < 0) ? "Risco de caixa negativo" : nil
+            // 4. Total de Gastos Planejados
+            LiquidKPICard(
+                title: plannedTitle,
+                value: AppFormatters.currency(summary.totalPlannedExpenses),
+                subtitle: plannedSubtitle,
+                icon: "doc.text.below.ecg.fill",
+                tint: Color(hex: "#3B82F6"),
+                footnote: plannedFootnote,
+                footnoteColor: .secondary
+            )
+
+            // 5. Sobra Após Planejamento
+            LiquidKPICard(
+                title: surplusTitle,
+                value: AppFormatters.currency(summary.surplusAfterPlanning),
+                subtitle: surplusSubtitle,
+                icon: summary.surplusAfterPlanning >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                tint: surplusColor,
+                footnote: surplusFootnote,
+                footnoteColor: surplusColor
+            )
+
+            // 6. Saldo Previsto na Conta
+            LiquidKPICard(
+                title: summary.projectedAccountBalanceTitle,
+                value: AppFormatters.currency(projectedBalanceValue),
+                valueColor: nil,
+                customSubtitle: accountCustomSubtitle,
+                icon: summary.isPast ? "checkmark.seal.fill" : "building.columns.fill",
+                tint: projectedBalanceTint,
+                footnote: accountFootnote,
+                footnoteColor: accountFootnoteColor
             )
         }
         .padding(.horizontal, 20)
-    }
-
-    private func kpiCard(
-        title: String,
-        value: String,
-        subtitle: String,
-        icon: String,
-        tint: Color,
-        alertText: String? = nil
-    ) -> some View {
-        LiquidGlassCard(cornerRadius: 18, padding: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(tint)
-                    Text(title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-
-                Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-
-                Text(subtitle)
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(Color.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let alertText {
-                    Text(alertText)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color(hex: "#EF4444"))
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
     }
 
     // MARK: - Previsões & Tetos do Mês
