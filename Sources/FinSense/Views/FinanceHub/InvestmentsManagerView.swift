@@ -244,6 +244,7 @@ public struct InvestmentMovementSheet: View {
     @State private var movementType: InvestmentMovementType
     @State private var amountString: String = ""
     @State private var selectedSourceAccountId: UUID = UUID()
+    @State private var date: Date = Date()
     @State private var notes: String = ""
 
     public init(
@@ -275,6 +276,8 @@ public struct InvestmentMovementSheet: View {
                         BRLCurrencyTextField("R$ 0,00", text: $amountString)
                     }
 
+                    DatePicker("Data", selection: $date, displayedComponents: [.date])
+
                     Picker(movementType == .deposit ? "Debitar da Conta" : "Creditar na Conta", selection: $selectedSourceAccountId) {
                         ForEach(store.accounts) { acc in
                             Text(acc.name).tag(acc.id)
@@ -299,7 +302,7 @@ public struct InvestmentMovementSheet: View {
                             type: movementType,
                             amount: amount,
                             sourceAccountId: selectedSourceAccountId,
-                            date: Date(),
+                            date: date,
                             notes: notes
                         )
                         dismiss()
@@ -420,7 +423,9 @@ public struct InvestmentDetailView: View {
 
         let futureProjections = timeline.filter(\.isFuture).reduce(0.0) { $0 + $1.projectedDeposits }
             + (timeline.first(where: \.isCurrent)?.projectedDeposits ?? 0.0)
-        let forecastEndBalance = timeline.last?.endBalance ?? (inv.balance + futureProjections)
+        let futureWithdrawals = timeline.filter(\.isFuture).reduce(0.0) { $0 + $1.projectedWithdrawals }
+            + (timeline.first(where: \.isCurrent)?.projectedWithdrawals ?? 0.0)
+        let forecastEndBalance = timeline.last?.endBalance ?? max(0, inv.balance + futureProjections - futureWithdrawals)
 
         let targetMonth = timeline.last?.month ?? 12
         let targetYear = timeline.last?.year ?? selectedYear
@@ -650,10 +655,12 @@ public struct InvestmentDetailView: View {
                                         .font(.system(size: 12))
                                         .foregroundStyle(Color(hex: "#6366F1"))
                                 }
-                                Text(AppFormatters.currency(futureProjections))
+                                Text(AppFormatters.currency(futureProjections - futureWithdrawals))
                                     .font(.system(size: 16, weight: .bold, design: .rounded))
                                     .foregroundStyle(Color(hex: "#6366F1"))
-                                Text("Aportes cotas no período")
+                                Text(futureWithdrawals > 0
+                                     ? "Aportes: \(AppFormatters.currency(futureProjections)) | Resgates: \(AppFormatters.currency(futureWithdrawals))"
+                                     : "Aportes cotas no período")
                                     .font(.system(size: 10))
                                     .foregroundStyle(Color.secondary)
                             }
@@ -787,7 +794,7 @@ public struct InvestmentDetailView: View {
                         }
 
                         let hasData = timeline.contains {
-                            $0.baseAccumulated > 0 || $0.deposits > 0 || $0.withdrawals > 0 || $0.projectedDeposits > 0
+                            $0.baseAccumulated > 0 || $0.deposits > 0 || $0.withdrawals > 0 || $0.projectedDeposits > 0 || $0.projectedWithdrawals > 0
                         }
 
                         if hasData {
@@ -829,7 +836,7 @@ public struct InvestmentDetailView: View {
                                         .cornerRadius(3)
                                     }
 
-                                    // 4. Resgates (Barra ao lado se houver resgate no mês)
+                                    // 4. Resgates Realizados (Barra ao lado se houver resgate no mês)
                                     if pt.withdrawals > 0 {
                                         BarMark(
                                             x: .value("Mês", pt.shortLabel),
@@ -837,6 +844,18 @@ public struct InvestmentDetailView: View {
                                             yEnd: .value("Valor", pt.withdrawals)
                                         )
                                         .foregroundStyle(Color(hex: "#EF4444"))
+                                        .position(by: .value("Grupo", "Resgates"))
+                                        .cornerRadius(3)
+                                    }
+
+                                    // 5. Resgates Previstos Futuros
+                                    if pt.projectedWithdrawals > 0 {
+                                        BarMark(
+                                            x: .value("Mês", pt.shortLabel),
+                                            yStart: .value("Base", 0),
+                                            yEnd: .value("Valor", pt.projectedWithdrawals)
+                                        )
+                                        .foregroundStyle(Color(hex: "#EF4444").opacity(0.65))
                                         .position(by: .value("Grupo", "Resgates"))
                                         .cornerRadius(3)
                                     }
