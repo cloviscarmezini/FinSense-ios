@@ -324,17 +324,31 @@ public struct InvestmentDetailView: View {
     public let investmentId: UUID
     @Environment(\.dismiss) var dismiss
 
+    @State private var selectedYear: Int
+    @State private var selectedPeriod: InvestmentPeriodFilter = .oneYear
     @State private var isMovementSheetPresented: Bool = false
     @State private var movementSheetType: InvestmentMovementType = .deposit
     @State private var movementPendingDeletion: InvestmentMovement? = nil
 
-    public init(store: FinancialDataStore, investmentId: UUID) {
+    public init(store: FinancialDataStore, investmentId: UUID, initialYear: Int? = nil) {
         self.store = store
         self.investmentId = investmentId
+        let y = initialYear ?? Calendar.current.component(.year, from: Date())
+        _selectedYear = State(initialValue: y)
     }
 
     private var currentInvestment: InvestmentItem? {
         store.investments.first(where: { $0.id == investmentId })
+    }
+
+    private var availableYears: [Int] {
+        let currentY = store.calendar.component(.year, from: Date())
+        let movYears = store.investmentMovements(for: investmentId).map {
+            store.calendar.component(.year, from: $0.date)
+        }
+        let minY = min(currentY - 2, movYears.min() ?? (currentY - 2))
+        let maxY = max(currentY + 2, movYears.max() ?? (currentY + 2))
+        return Array(minY...maxY)
     }
 
     public var body: some View {
@@ -400,11 +414,17 @@ public struct InvestmentDetailView: View {
     private func detailContent(_ inv: InvestmentItem) -> some View {
         let holderAccount = store.account(for: inv.investmentAccountId)
         let movements = store.investmentMovements(for: inv.id)
-        let timeline = store.investmentMovementTimeline(for: inv.id)
+        let timeline = store.investmentTimeline(for: inv.id, year: selectedYear, period: selectedPeriod)
+        let currentYear = store.calendar.component(.year, from: Date())
+        let isPastYear = selectedYear < currentYear
 
-        let totalDeposits = movements.filter { $0.type == .deposit }.reduce(0.0) { $0 + $1.amount }
-        let totalWithdrawals = movements.filter { $0.type == .withdrawal }.reduce(0.0) { $0 + $1.amount }
         let futureProjections = timeline.filter(\.isFuture).reduce(0.0) { $0 + $1.projectedDeposits }
+            + (timeline.first(where: \.isCurrent)?.projectedDeposits ?? 0.0)
+        let forecastEndBalance = timeline.last?.endBalance ?? (inv.balance + futureProjections)
+
+        let targetMonth = timeline.last?.month ?? 12
+        let targetYear = timeline.last?.year ?? selectedYear
+        let targetMonthLabel = String(format: "%02d/%04d", targetMonth, targetYear)
 
         let linkedQuotaRules = store.categoryQuotas.filter {
             $0.quotaType == .investment && $0.linkedInvestmentId == inv.id
@@ -412,7 +432,65 @@ public struct InvestmentDetailView: View {
 
         ScrollView {
             VStack(spacing: 16) {
-                // Header Card
+                // 1. Barra de Seleção de Ano (no topo)
+                HStack(spacing: 6) {
+                    Button {
+                        if let idx = availableYears.firstIndex(of: selectedYear), idx > 0 {
+                            selectedYear = availableYears[idx - 1]
+                        } else {
+                            selectedYear -= 1
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.secondary)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(Color.primary.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(availableYears, id: \.self) { y in
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    selectedYear = y
+                                } label: {
+                                    Text(String(y))
+                                        .font(.system(size: 13, weight: y == selectedYear ? .bold : .medium))
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(y == selectedYear ? Color.accentColor : Color.primary.opacity(0.07))
+                                        )
+                                        .foregroundStyle(y == selectedYear ? Color.white : Color.primary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
+                    Button {
+                        if let idx = availableYears.firstIndex(of: selectedYear), idx < availableYears.count - 1 {
+                            selectedYear = availableYears[idx + 1]
+                        } else {
+                            selectedYear += 1
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.secondary)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(Color.primary.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+
+                // 2. Card do Ativo (Identificação, Saldo, Toggle Consolidado, Botões de Movimentação)
                 LiquidGlassCard(cornerRadius: 20, padding: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(alignment: .top) {
@@ -441,19 +519,6 @@ public struct InvestmentDetailView: View {
                                 Text("Conta: \(holderAccount?.name ?? "Não informada")")
                                     .font(.system(size: 12))
                                     .foregroundStyle(Color.secondary)
-                            }
-
-                            Spacer()
-                        }
-
-                        HStack(alignment: .bottom) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Saldo Acumulado")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.secondary)
-                                Text(AppFormatters.currency(inv.balance))
-                                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color(hex: "#10B981"))
                             }
 
                             Spacer()
@@ -517,163 +582,273 @@ public struct InvestmentDetailView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
 
-                // Metric Cards Grid
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    LiquidGlassCard(cornerRadius: 14, padding: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Total Aportado")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.secondary)
-                                Spacer()
-                                Image(systemName: "arrow.down.right.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color(hex: "#10B981"))
+                // 3. Barra de Seleção de Período (3 meses, 6 meses, 1 ano) - Acima dos Cards
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("Período do Planejamento")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.secondary)
+
+                        Spacer()
+
+                        if isPastYear {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                Text("Ano Histórico (\(selectedYear))")
                             }
-                            Text(AppFormatters.currency(totalDeposits))
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(hex: "#10B981"))
-                            Text("\(movements.filter { $0.type == .deposit }.count) aporte(s)")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.secondary)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.secondary.opacity(0.12)))
                         }
                     }
 
-                    LiquidGlassCard(cornerRadius: 14, padding: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Total Resgatado")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.secondary)
-                                Spacer()
-                                Image(systemName: "arrow.up.left.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color(hex: "#EF4444"))
-                            }
-                            Text(AppFormatters.currency(totalWithdrawals))
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(hex: "#EF4444"))
-                            Text("\(movements.filter { $0.type == .withdrawal }.count) resgate(s)")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.secondary)
+                    Picker("Período", selection: $selectedPeriod) {
+                        ForEach(InvestmentPeriodFilter.allCases) { p in
+                            Text(p.title).tag(p)
                         }
                     }
-
-                    LiquidGlassCard(cornerRadius: 14, padding: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Projeção Cotas")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.secondary)
-                                Spacer()
-                                Image(systemName: "chart.line.uptrend.xyaxis")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color(hex: "#6366F1"))
-                            }
-                            Text(AppFormatters.currency(futureProjections))
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(hex: "#6366F1"))
-                            Text("Próximos 6 meses")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.secondary)
-                        }
-                    }
-
-                    LiquidGlassCard(cornerRadius: 14, padding: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Saldo Líquido")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(Color.secondary)
-                                Spacer()
-                                Image(systemName: "banknote.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color(hex: "#10B981"))
-                            }
-                            Text(AppFormatters.currency(inv.balance))
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.primary)
-                            Text("Posição cadastrada")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.secondary)
-                        }
-                    }
+                    .pickerStyle(.segmented)
                 }
                 .padding(.horizontal, 16)
 
-                // Gráfico de Barras
+                // 4. Cards de Métricas (Removido total aportado e total resgatado)
+                // Cards: Saldo Acumulado, Projeção Futura e Previsão para [12/2026]
+                if !isPastYear {
+                    LiquidGlassCard(cornerRadius: 16, padding: 14) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Saldo Acumulado")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondary)
+                                Spacer()
+                                Image(systemName: "banknote.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                            }
+                            Text(AppFormatters.currency(inv.balance))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color(hex: "#10B981"))
+                            Text("Posição cadastrada atual")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        LiquidGlassCard(cornerRadius: 14, padding: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Projeção Futura")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Image(systemName: "chart.line.uptrend.xyaxis")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(hex: "#6366F1"))
+                                }
+                                Text(AppFormatters.currency(futureProjections))
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color(hex: "#6366F1"))
+                                Text("Aportes cotas no período")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }
+
+                        LiquidGlassCard(cornerRadius: 14, padding: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Previsão para \(targetMonthLabel)")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Image(systemName: "sparkles")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(hex: "#3B82F6"))
+                                }
+                                Text(AppFormatters.currency(forecastEndBalance))
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color(hex: "#3B82F6"))
+                                Text("Saldo estimado no fim")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                } else {
+                    let openingBal = timeline.first?.baseAccumulated ?? 0.0
+                    let yearDeposits = timeline.reduce(0.0) { $0 + $1.deposits }
+                    let closingBal = timeline.last?.endBalance ?? 0.0
+
+                    LiquidGlassCard(cornerRadius: 16, padding: 14) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Saldo Inicial (\(selectedYear))")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondary)
+                                Spacer()
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color(hex: "#3B82F6"))
+                            }
+                            Text(AppFormatters.currency(openingBal))
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color(hex: "#3B82F6"))
+                            Text("Posição em 01/01/\(selectedYear)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        LiquidGlassCard(cornerRadius: 14, padding: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Aportes em \(selectedYear)")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Image(systemName: "arrow.down.right.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                }
+                                Text(AppFormatters.currency(yearDeposits))
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                                Text("Histórico do exercício")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }
+
+                        LiquidGlassCard(cornerRadius: 14, padding: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Fechamento (\(selectedYear))")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(Color.secondary)
+                                    Spacer()
+                                    Image(systemName: "flag.checkered")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                }
+                                Text(AppFormatters.currency(closingBal))
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                                Text("Posição em 31/12/\(selectedYear)")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // 5. Gráfico de Barras: Acumulado, Aportes, Projeção e Resgates
                 LiquidGlassCard(cornerRadius: 20, padding: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Fluxo Mensal & Projeções")
+                            Text("Fluxo Mensal & Composição Acumulada")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(Color.primary)
-                            Text("Aportes realizados no passado e projeção de cotas futuras")
+                            Text(isPastYear
+                                 ? "Evolução histórica mês a mês em \(selectedYear)"
+                                 : "Evolução do acumulado com aportes e projeções na mesma barra")
                                 .font(.system(size: 11))
                                 .foregroundStyle(Color.secondary)
                         }
 
-                        // Legenda
-                        HStack(spacing: 12) {
+                        // Legenda: Aportes, Projeção, Resgate, Acumulado
+                        HStack(spacing: 10) {
                             HStack(spacing: 4) {
                                 Circle().fill(Color(hex: "#10B981")).frame(width: 8, height: 8)
                                 Text("Aportes").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
                             }
-                            HStack(spacing: 4) {
-                                Circle().fill(Color(hex: "#EF4444")).frame(width: 8, height: 8)
-                                Text("Resgates").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
+                            if !isPastYear {
+                                HStack(spacing: 4) {
+                                    Circle().fill(Color(hex: "#6366F1")).frame(width: 8, height: 8)
+                                    Text("Projeção").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
+                                }
                             }
                             HStack(spacing: 4) {
-                                Circle().fill(Color(hex: "#6366F1")).frame(width: 8, height: 8)
-                                Text("Projeção").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
+                                Circle().fill(Color(hex: "#EF4444")).frame(width: 8, height: 8)
+                                Text("Resgate").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
+                            }
+                            HStack(spacing: 4) {
+                                Circle().fill(Color(hex: "#3B82F6")).frame(width: 8, height: 8)
+                                Text("Acumulado").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.secondary)
                             }
                         }
 
-                        let hasData = timeline.contains { $0.deposits > 0 || $0.withdrawals > 0 || $0.projectedDeposits > 0 }
+                        let hasData = timeline.contains {
+                            $0.baseAccumulated > 0 || $0.deposits > 0 || $0.withdrawals > 0 || $0.projectedDeposits > 0
+                        }
 
                         if hasData {
                             Chart {
                                 ForEach(timeline) { pt in
+                                    // 1. Acumulado (Base da barra)
+                                    if pt.baseAccumulated > 0 {
+                                        BarMark(
+                                            x: .value("Mês", pt.shortLabel),
+                                            yStart: .value("Base", 0),
+                                            yEnd: .value("Valor", pt.baseAccumulated)
+                                        )
+                                        .foregroundStyle(Color(hex: "#3B82F6"))
+                                        .position(by: .value("Grupo", "Evolução"))
+                                        .cornerRadius(pt.deposits > 0 || pt.projectedDeposits > 0 ? 0 : 3)
+                                    }
+
+                                    // 2. Aportes (Fatia sobre o acumulado)
                                     if pt.deposits > 0 {
                                         BarMark(
                                             x: .value("Mês", pt.shortLabel),
-                                            y: .value("Valor", pt.deposits)
+                                            yStart: .value("Base", pt.baseAccumulated),
+                                            yEnd: .value("Valor", pt.baseAccumulated + pt.deposits)
                                         )
                                         .foregroundStyle(Color(hex: "#10B981"))
-                                        .position(by: .value("Tipo", "Aportes"))
-                                        .cornerRadius(3)
+                                        .position(by: .value("Grupo", "Evolução"))
+                                        .cornerRadius(pt.projectedDeposits > 0 ? 0 : 3)
                                     }
 
-                                    if pt.withdrawals > 0 {
-                                        BarMark(
-                                            x: .value("Mês", pt.shortLabel),
-                                            y: .value("Valor", pt.withdrawals)
-                                        )
-                                        .foregroundStyle(Color(hex: "#EF4444"))
-                                        .position(by: .value("Tipo", "Resgates"))
-                                        .cornerRadius(3)
-                                    }
-
+                                    // 3. Projeção (Fatia sobre acumulado + aportes)
                                     if pt.projectedDeposits > 0 {
                                         BarMark(
                                             x: .value("Mês", pt.shortLabel),
-                                            y: .value("Valor", pt.projectedDeposits)
+                                            yStart: .value("Base", pt.baseAccumulated + pt.deposits),
+                                            yEnd: .value("Valor", pt.baseAccumulated + pt.deposits + pt.projectedDeposits)
                                         )
                                         .foregroundStyle(Color(hex: "#6366F1"))
-                                        .position(by: .value("Tipo", "Projeção"))
+                                        .position(by: .value("Grupo", "Evolução"))
+                                        .cornerRadius(3)
+                                    }
+
+                                    // 4. Resgates (Barra ao lado se houver resgate no mês)
+                                    if pt.withdrawals > 0 {
+                                        BarMark(
+                                            x: .value("Mês", pt.shortLabel),
+                                            yStart: .value("Base", 0),
+                                            yEnd: .value("Valor", pt.withdrawals)
+                                        )
+                                        .foregroundStyle(Color(hex: "#EF4444"))
+                                        .position(by: .value("Grupo", "Resgates"))
                                         .cornerRadius(3)
                                     }
                                 }
                             }
-                            .frame(height: 190)
+                            .frame(height: 200)
                             .chartYAxis {
                                 AxisMarks(position: .leading) { value in
                                     AxisGridLine()
                                     if let doubleVal = value.as(Double.self) {
                                         AxisValueLabel {
-                                            Text(AppFormatters.currency(doubleVal))
+                                            Text(AppFormatters.compactCurrency(doubleVal))
                                                 .font(.system(size: 9, design: .monospaced))
                                         }
                                     }
@@ -694,7 +869,7 @@ public struct InvestmentDetailView: View {
                 }
                 .padding(.horizontal, 16)
 
-                // Cotas Vinculadas
+                // 6. Cotas Vinculadas
                 if !linkedQuotaRules.isEmpty {
                     LiquidGlassCard(cornerRadius: 18, padding: 14) {
                         VStack(alignment: .leading, spacing: 10) {
@@ -741,7 +916,7 @@ public struct InvestmentDetailView: View {
                     .padding(.horizontal, 16)
                 }
 
-                // Todas as Movimentações
+                // 7. Todas as Movimentações
                 LiquidGlassCard(cornerRadius: 20, padding: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {

@@ -56,6 +56,17 @@ public enum AppFormatters {
         return raw.replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
+    public static func compactCurrency(_ value: Double) -> String {
+        let absVal = abs(value)
+        if absVal >= 1_000_000 {
+            return String(format: "R$ %.1fM", value / 1_000_000.0)
+        } else if absVal >= 1_000 {
+            return String(format: "R$ %.1fk", value / 1_000.0)
+        } else {
+            return String(format: "R$ %.0f", value)
+        }
+    }
+
     public static func shortDate(_ date: Date) -> String {
         shortDateFormatter.string(from: date)
     }

@@ -512,4 +512,70 @@ final class FinSenseTests: XCTestCase {
             await auth.logout()
         }
     }
+
+    @MainActor
+    func testInvestmentTimelineAndStackedPeriodCalculations() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let currentYear = store.calendar.component(.year, from: Date())
+        let currentMonth = store.calendar.component(.month, from: Date())
+
+        store.createAccount(name: "XP Investimentos", initialBalance: 20000.0)
+        let accId = store.accounts.first!.id
+
+        store.createInvestment(
+            name: "LCI IPCA+",
+            groupName: "Renda Fixa",
+            investmentAccountId: accId,
+            balance: 10000.0,
+            colorHex: "#10B981"
+        )
+        let inv = store.investments.first!
+
+        // 1. Grava aporte
+        store.recordInvestmentMovement(
+            investmentId: inv.id,
+            type: .deposit,
+            amount: 2000.0,
+            sourceAccountId: accId,
+            date: Date(),
+            notes: "Aporte programado"
+        )
+
+        // 2. Cria cota vinculada
+        store.saveCategoryQuota(
+            categoryId: store.categories.first!.id,
+            name: "Cota LCI",
+            iconSymbol: "chart.line.uptrend.xyaxis",
+            plannedQuantity: 1,
+            estimatedUnitPrice: 1000.0,
+            for: Date(),
+            repeatForFutureMonths: true,
+            editScope: .thisAndFutureMonths,
+            quotaType: .investment,
+            linkedInvestmentId: inv.id
+        )
+
+        // 3. Testa 1 ano
+        let yearTimeline = store.investmentTimeline(for: inv.id, year: currentYear, period: .oneYear)
+        XCTAssertEqual(yearTimeline.count, 12)
+        for pt in yearTimeline {
+            let totalBarHeight = pt.baseAccumulated + pt.deposits + pt.projectedDeposits
+            XCTAssertEqual(totalBarHeight, pt.endBalance, accuracy: 0.001)
+        }
+
+        // 4. Testa 6 meses e 3 meses
+        let sixMonths = store.investmentTimeline(for: inv.id, year: currentYear, period: .sixMonths)
+        XCTAssertEqual(sixMonths.count, 6)
+
+        let threeMonths = store.investmentTimeline(for: inv.id, year: currentYear, period: .threeMonths)
+        XCTAssertEqual(threeMonths.count, 3)
+
+        // 5. Testa ano anterior (somente histórico, projeções zeradas)
+        let pastYear = currentYear - 1
+        let pastYearTimeline = store.investmentTimeline(for: inv.id, year: pastYear, period: .oneYear)
+        XCTAssertEqual(pastYearTimeline.count, 12)
+        for pt in pastYearTimeline {
+            XCTAssertEqual(pt.projectedDeposits, 0.0)
+        }
+    }
 }
