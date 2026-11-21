@@ -153,6 +153,7 @@ public struct FinancialDatabaseSnapshot: Codable {
     public var debts: [DebtItem]
     public var contracts: [CreditContract]
     public var amortizationPlans: [AmortizationPlan]?
+    public var budgetProjectionScenario: BudgetProjectionScenario?
     public var provisions: [CategoryProvision]?
     public var categoryQuotas: [CategoryQuotaRule]?
 
@@ -165,6 +166,7 @@ public struct FinancialDatabaseSnapshot: Codable {
         debts: [DebtItem] = [],
         contracts: [CreditContract] = [],
         amortizationPlans: [AmortizationPlan]? = [],
+        budgetProjectionScenario: BudgetProjectionScenario? = nil,
         provisions: [CategoryProvision]? = [],
         categoryQuotas: [CategoryQuotaRule]? = []
     ) {
@@ -176,6 +178,7 @@ public struct FinancialDatabaseSnapshot: Codable {
         self.debts = debts
         self.contracts = contracts
         self.amortizationPlans = amortizationPlans
+        self.budgetProjectionScenario = budgetProjectionScenario
         self.provisions = provisions
         self.categoryQuotas = categoryQuotas
     }
@@ -310,6 +313,9 @@ public final class FinancialDataStore: ObservableObject {
             self.debts = decoded.debts
             self.contracts = decoded.contracts
             self.amortizationPlans = decoded.amortizationPlans ?? []
+            if let savedScenario = decoded.budgetProjectionScenario {
+                self.budgetProjectionScenario = savedScenario
+            }
             self.provisions = decoded.provisions ?? []
             self.categoryQuotas = decoded.categoryQuotas ?? []
             ensureRecurringTransactionsMaterialized(upTo: endOfYear(for: selectedMonth))
@@ -366,6 +372,7 @@ public final class FinancialDataStore: ObservableObject {
             debts: debts,
             contracts: contracts,
             amortizationPlans: amortizationPlans,
+            budgetProjectionScenario: budgetProjectionScenario,
             provisions: provisions,
             categoryQuotas: categoryQuotas
         )
