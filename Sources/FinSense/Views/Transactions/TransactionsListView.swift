@@ -22,6 +22,10 @@ public struct TransactionsListView: View {
     @State private var isMonthPickerPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
     @State private var confirmingInstallmentPaymentTx: FinancialTransaction? = nil
+    @State private var transactionPendingPaymentToggle: FinancialTransaction? = nil
+    @State private var isBulkSelectionMode: Bool = false
+    @State private var selectedTransactionIds: Set<UUID> = []
+    @State private var showBulkPaymentConfirmation: Bool = false
 
     public init(
         store: FinancialDataStore,
@@ -148,6 +152,12 @@ public struct TransactionsListView: View {
                     }
                     .padding(.horizontal, 20)
 
+                    // Barra de Seleção em Massa (ativada ao segurar uma transação)
+                    if isBulkSelectionMode {
+                        bulkSelectionHeaderBar
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     // Campo de Busca (revelado ao puxar a tela para baixo)
                     if isSearchVisible || !searchText.isEmpty {
                         searchBarView
@@ -200,16 +210,25 @@ public struct TransactionsListView: View {
                                             TransactionRow(
                                                 transaction: tx,
                                                 store: store,
+                                                isBulkSelectionMode: isBulkSelectionMode,
+                                                isSelected: selectedTransactionIds.contains(tx.id),
                                                 onTap: {
-                                                    editingTransaction = tx
+                                                    if isBulkSelectionMode {
+                                                        toggleBulkSelection(for: tx)
+                                                    } else {
+                                                        editingTransaction = tx
+                                                    }
                                                 },
                                                 onTogglePaid: {
                                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                     if !tx.isPaid && store.installmentCorrectionBreakdown(for: tx) != nil {
                                                         confirmingInstallmentPaymentTx = tx
                                                     } else {
-                                                        store.toggleTransactionPaid(transactionId: tx.id)
+                                                        transactionPendingPaymentToggle = tx
                                                     }
+                                                },
+                                                onLongPress: {
+                                                    enterBulkSelection(with: tx)
                                                 }
                                             )
                                             .padding(.horizontal, 20)
@@ -234,6 +253,15 @@ public struct TransactionsListView: View {
                         }
                     }
                 }
+
+                // Barra Flutuante de Confirmação em Massa
+                if isBulkSelectionMode {
+                    VStack {
+                        Spacer()
+                        bulkSelectionBottomBar
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .sheet(isPresented: $isAddSheetPresented) {
                 TransactionDetailSheet(store: store, syncService: syncService)
@@ -246,6 +274,40 @@ public struct TransactionsListView: View {
             }
             .sheet(item: $confirmingInstallmentPaymentTx) { tx in
                 ConfirmInstallmentPaymentModalSheet(store: store, transaction: tx)
+            }
+            .alert(
+                transactionPendingPaymentToggle.map { paymentAlertTitle(for: $0) } ?? "",
+                isPresented: Binding(
+                    get: { transactionPendingPaymentToggle != nil },
+                    set: { if !$0 { transactionPendingPaymentToggle = nil } }
+                ),
+                presenting: transactionPendingPaymentToggle
+            ) { tx in
+                Button(tx.isPaid ? "Desfazer" : (tx.type == .expense ? "Confirmar Pagamento" : "Confirmar Recebimento")) {
+                    _ = store.toggleTransactionPaid(transactionId: tx.id)
+                    transactionPendingPaymentToggle = nil
+                }
+                Button("Cancelar", role: .cancel) {
+                    transactionPendingPaymentToggle = nil
+                }
+            } message: { tx in
+                Text(paymentAlertMessage(for: tx))
+            }
+            .alert(
+                bulkPaymentAlertTitle,
+                isPresented: $showBulkPaymentConfirmation
+            ) {
+                Button(bulkPaymentConfirmLabel) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    _ = store.markTransactionsPaid(Array(selectedTransactionIds))
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isBulkSelectionMode = false
+                        selectedTransactionIds.removeAll()
+                    }
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text(bulkPaymentAlertMessage)
             }
         }
     }
@@ -393,13 +455,204 @@ public struct TransactionsListView: View {
             return DayGroup(date: date, transactions: dayTxs, netAmount: dayNet)
         }
     }
+
+    // MARK: - Seleção em Massa & Confirmações de Pagamento
+
+    private var visiblePendingTransactions: [FinancialTransaction] {
+        filteredGroupedDays.flatMap(\.transactions).filter {
+            !$0.isPaid && store.transactionProjectionStatus(for: $0) != .shadowed
+        }
+    }
+
+    private var selectedPendingTransactions: [FinancialTransaction] {
+        visiblePendingTransactions.filter { selectedTransactionIds.contains($0.id) }
+    }
+
+    private var selectedPendingTotalAmount: Double {
+        selectedPendingTransactions.reduce(0.0) { $0 + store.effectiveTransactionAmount(for: $1) }
+    }
+
+    private var bulkPaymentConfirmLabel: String {
+        let items = selectedPendingTransactions
+        let hasExpenses = items.contains { $0.type == .expense }
+        let hasIncomes = items.contains { $0.type == .income }
+        if hasExpenses && !hasIncomes {
+            return "Confirmar Pagamento (\(items.count))"
+        } else if hasIncomes && !hasExpenses {
+            return "Confirmar Recebimento (\(items.count))"
+        }
+        return "Confirmar Liquidação (\(items.count))"
+    }
+
+    private var bulkPaymentAlertTitle: String {
+        let items = selectedPendingTransactions
+        let hasExpenses = items.contains { $0.type == .expense }
+        let hasIncomes = items.contains { $0.type == .income }
+        if hasExpenses && !hasIncomes {
+            return "Confirmar Pagamento em Massa?"
+        } else if hasIncomes && !hasExpenses {
+            return "Confirmar Recebimento em Massa?"
+        }
+        return "Confirmar Liquidação em Massa?"
+    }
+
+    private var bulkPaymentAlertMessage: String {
+        let items = selectedPendingTransactions
+        let total = AppFormatters.currency(selectedPendingTotalAmount)
+        let hasFuture = items.contains { store.isDateInFuture($0.date) }
+        var msg = "\(items.count) transação(ões) pendente(s) selecionada(s) • Total: \(total)."
+        if hasFuture {
+            msg += "\n\nTransações agendadas para o futuro serão movidas para a data de hoje (\(AppFormatters.shortDate(Date()))."
+        }
+        msg += "\n\nTransações já pagas/recebidas são ignoradas automaticamente. Deseja confirmar?"
+        return msg
+    }
+
+    private func paymentAlertTitle(for tx: FinancialTransaction) -> String {
+        if tx.isPaid {
+            return tx.type == .expense ? "Desfazer Pagamento?" : "Desfazer Recebimento?"
+        }
+        return tx.type == .expense ? "Confirmar Pagamento?" : "Confirmar Recebimento?"
+    }
+
+    private func paymentAlertMessage(for tx: FinancialTransaction) -> String {
+        let effectiveAmount = store.effectiveTransactionAmount(for: tx)
+        let base = "\"\(tx.name)\" • \(AppFormatters.currency(effectiveAmount)) • \(AppFormatters.shortDate(tx.date))"
+        if tx.isPaid {
+            return "\(base)\n\nA transação voltará a ficar como \(tx.type == .expense ? "não paga" : "não recebida")."
+        }
+        if store.isDateInFuture(tx.date) {
+            return "\(base)\n\nEsta transação está agendada para o futuro. Ao confirmar, ela será marcada como \(tx.type == .expense ? "paga" : "recebida") e movida para a data de hoje (\(AppFormatters.shortDate(Date())))."
+        }
+        return "\(base)\n\nDeseja marcar como \(tx.type == .expense ? "paga" : "recebida")?"
+    }
+
+    private func enterBulkSelection(with tx: FinancialTransaction) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            isBulkSelectionMode = true
+            if !tx.isPaid && store.transactionProjectionStatus(for: tx) != .shadowed {
+                selectedTransactionIds.insert(tx.id)
+            }
+        }
+    }
+
+    private func toggleBulkSelection(for tx: FinancialTransaction) {
+        // Ignora transações já pagas ou suprimidas para pagamento em massa
+        guard !tx.isPaid && store.transactionProjectionStatus(for: tx) != .shadowed else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if selectedTransactionIds.contains(tx.id) {
+            selectedTransactionIds.remove(tx.id)
+        } else {
+            selectedTransactionIds.insert(tx.id)
+        }
+    }
+
+    private var bulkSelectionHeaderBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                let pendingIds = Set(visiblePendingTransactions.map(\.id))
+                if !pendingIds.isEmpty && pendingIds.isSubset(of: selectedTransactionIds) {
+                    selectedTransactionIds.subtract(pendingIds)
+                } else {
+                    selectedTransactionIds.formUnion(pendingIds)
+                }
+            } label: {
+                let allSelected = !visiblePendingTransactions.isEmpty && Set(visiblePendingTransactions.map(\.id)).isSubset(of: selectedTransactionIds)
+                Label(allSelected ? "Desmarcar" : "Selecionar Pendentes", systemImage: allSelected ? "checkmark.circle.fill" : "checklist")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#0284C7"))
+            }
+            .buttonStyle(.plain)
+            .disabled(visiblePendingTransactions.isEmpty)
+
+            Spacer()
+
+            Text("\(selectedPendingTransactions.count) selecionada(s)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.secondary)
+
+            Spacer()
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isBulkSelectionMode = false
+                    selectedTransactionIds.removeAll()
+                }
+            } label: {
+                Text("Cancelar")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#EF4444"))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#0284C7").opacity(0.35), lineWidth: 1))
+        )
+        .padding(.horizontal, 20)
+    }
+
+    private var bulkSelectionBottomBar: some View {
+        let count = selectedPendingTransactions.count
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(count) pendente(s)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.primary)
+                Text(AppFormatters.currency(selectedPendingTotalAmount))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color(hex: "#10B981"))
+            }
+
+            Spacer()
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showBulkPaymentConfirmation = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text(count > 0 ? "Pagar / Receber (\(count))" : "Selecione pendentes")
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(count > 0 ? Color(hex: "#10B981") : Color.secondary.opacity(0.4)))
+            }
+            .buttonStyle(.plain)
+            .disabled(count == 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(.ultraThinMaterial)
+                .shadow(color: Color.black.opacity(0.35), radius: 14, y: 6)
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.18), lineWidth: 0.9))
+        )
+        .padding(.horizontal, 20)
+        .padding(.bottom, 74)
+    }
 }
 
 public struct TransactionRow: View {
     public let transaction: FinancialTransaction
     @ObservedObject public var store: FinancialDataStore
+    public var isBulkSelectionMode: Bool = false
+    public var isSelected: Bool = false
     public var onTap: () -> Void
     public var onTogglePaid: (() -> Void)? = nil
+    public var onLongPress: (() -> Void)? = nil
 
     public var body: some View {
         let cat = store.categories.first(where: { $0.id == transaction.categoryId })
@@ -409,16 +662,18 @@ public struct TransactionRow: View {
         let effectiveAmount = store.effectiveTransactionAmount(for: transaction)
         let isShadowed = projStatus == .shadowed
         let correctionBreakdown = store.installmentCorrectionBreakdown(for: transaction)
+        let isEligibleForBulk = !transaction.isPaid && !isShadowed
 
         LiquidGlassCard(cornerRadius: 16, padding: 12) {
             HStack(spacing: 12) {
-                if let onTogglePaid {
-                    Button(action: onTogglePaid) {
-                        Image(systemName: transaction.isPaid ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 19, weight: .semibold))
-                            .foregroundStyle(transaction.isPaid ? Color(hex: "#10B981") : Color.secondary.opacity(0.6))
-                    }
-                    .buttonStyle(.plain)
+                if isBulkSelectionMode {
+                    Image(systemName: isEligibleForBulk
+                          ? (isSelected ? "checkmark.circle.fill" : "circle")
+                          : (transaction.isPaid ? "checkmark.circle.fill" : "minus.circle"))
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundStyle(isEligibleForBulk
+                                         ? (isSelected ? Color(hex: "#10B981") : Color.secondary.opacity(0.7))
+                                         : Color.secondary.opacity(0.3))
                 }
 
                 Button(action: onTap) {
@@ -503,7 +758,7 @@ public struct TransactionRow: View {
 
                         Spacer()
 
-                        VStack(alignment: .trailing, spacing: 2) {
+                        VStack(alignment: .trailing, spacing: 4) {
                             Text(AppFormatters.currency(effectiveAmount))
                                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                                 .foregroundStyle(
@@ -517,6 +772,34 @@ public struct TransactionRow: View {
                                     .font(.system(size: 10, design: .monospaced))
                                     .strikethrough(true, color: .secondary)
                                     .foregroundStyle(Color.secondary)
+                            } else if !isBulkSelectionMode, let onTogglePaid {
+                                Button(action: onTogglePaid) {
+                                    let isPaid = transaction.isPaid
+                                    let labelText = isPaid
+                                        ? (transaction.type == .expense ? "Pago" : "Recebido")
+                                        : (transaction.type == .expense ? "Pagar" : "Receber")
+                                    let iconName = isPaid
+                                        ? "checkmark.circle.fill"
+                                        : (transaction.type == .expense ? "creditcard.fill" : "arrow.down.circle.fill")
+                                    let accentHex = isPaid
+                                        ? "#10B981"
+                                        : (transaction.type == .expense ? "#0284C7" : "#10B981")
+
+                                    HStack(spacing: 4) {
+                                        Image(systemName: iconName)
+                                            .font(.system(size: 10, weight: .bold))
+                                        Text(labelText)
+                                            .font(.system(size: 11, weight: .bold))
+                                    }
+                                    .foregroundStyle(isPaid ? Color(hex: "#10B981") : .white)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(isPaid ? Color(hex: "#10B981").opacity(0.16) : Color(hex: accentHex))
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -526,7 +809,19 @@ public struct TransactionRow: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(isFullPayoffTx ? Color(hex: "#10B981").opacity(0.55) : Color.clear, lineWidth: 1.3)
+                .stroke(
+                    isBulkSelectionMode && isSelected
+                        ? Color(hex: "#10B981").opacity(0.85)
+                        : (isFullPayoffTx ? Color(hex: "#10B981").opacity(0.55) : Color.clear),
+                    lineWidth: isBulkSelectionMode && isSelected ? 1.8 : 1.3
+                )
+        )
+        .opacity(isBulkSelectionMode && !isEligibleForBulk ? 0.55 : 1.0)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.45)
+                .onEnded { _ in
+                    onLongPress?()
+                }
         )
     }
 }

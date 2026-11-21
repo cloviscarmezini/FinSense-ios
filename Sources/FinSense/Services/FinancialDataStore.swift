@@ -665,6 +665,58 @@ public final class FinancialDataStore: ObservableObject {
         return true
     }
 
+    /// Marca múltiplas transações pendentes como pagas/recebidas em massa,
+    /// ignorando automaticamente transações já pagas ou suprimidas.
+    @discardableResult
+    public func markTransactionsPaid(_ transactionIds: [UUID], referenceNow: Date? = nil) -> (processedCount: Int, ignoredAlreadyPaidCount: Int) {
+        let now = referenceNow ?? effectiveCurrentDate
+        let uniqueIds = Set(transactionIds)
+        var processedIds: [UUID] = []
+        var ignoredAlreadyPaidCount = 0
+
+        for txId in uniqueIds {
+            guard let idx = transactions.firstIndex(where: { $0.id == txId }) else { continue }
+            if transactions[idx].isPaid {
+                ignoredAlreadyPaidCount += 1
+                continue
+            }
+            if transactionProjectionStatus(for: transactions[idx]) == .shadowed {
+                continue
+            }
+            if transactions[idx].transactionOrigin == .plannedAmortization {
+                let payDate = isDateInFuture(transactions[idx].date, referenceNow: now)
+                    ? now
+                    : transactions[idx].date
+                if confirmPlannedAmortizationByTransactionId(txId, paymentDate: payDate) {
+                    processedIds.append(txId)
+                }
+                continue
+            }
+            if isDateInFuture(transactions[idx].date, referenceNow: now) {
+                transactions[idx].date = now
+            }
+            if let baseReg = transactions[idx].baseInstallmentRegisteredAmount,
+               transactions[idx].confirmedRealInterestCorrectionAmount == nil {
+                transactions[idx].confirmedRealInterestCorrectionAmount = ((transactions[idx].amount - baseReg) * 100.0).rounded() / 100.0
+            }
+            transactions[idx].isPaid = true
+            processedIds.append(txId)
+        }
+
+        if !processedIds.isEmpty {
+            sortTransactions()
+            invalidateDerivedCaches()
+            saveToDisk()
+            for txId in processedIds {
+                if let updated = transactions.first(where: { $0.id == txId }) {
+                    cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: updated.id, operation: .upsert, entity: updated)
+                }
+            }
+        }
+
+        return (processedIds.count, ignoredAlreadyPaidCount)
+    }
+
     @discardableResult
     public func confirmContractInstallmentPayment(
         transactionId: UUID,
