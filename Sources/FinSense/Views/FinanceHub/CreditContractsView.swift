@@ -1,13 +1,18 @@
 // Sources/FinSense/Views/FinanceHub/CreditContractsView.swift
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct CreditContractsView: View {
     @ObservedObject var store: FinancialDataStore
     public let kind: CreditContractKind?
     @State private var isAddContractPresented: Bool = false
+    @State private var isImportDocumentPresented: Bool = false
+    @State private var planningContract: CreditContract? = nil
     @State private var simulatingContract: CreditContract? = nil
     @State private var settlingContract: CreditContract? = nil
     @State private var contractPendingDeletion: CreditContract? = nil
+    @State private var reschedulingExpiredItem: (contractId: UUID, item: PlannedAmortization)? = nil
+    @State private var rescheduleTargetDate: Date = Date()
 
     public init(store: FinancialDataStore, kind: CreditContractKind? = nil) {
         self.store = store
@@ -84,7 +89,18 @@ public struct CreditContractsView: View {
         .navigationTitle(viewTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
+            ToolbarItemGroup(placement: .confirmationAction) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    isImportDocumentPresented = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.viewfinder.fill")
+                        Text("Importar PDF")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                }
+
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     isAddContractPresented = true
@@ -96,11 +112,58 @@ public struct CreditContractsView: View {
         .sheet(isPresented: $isAddContractPresented) {
             ContractEditorSheet(store: store, initialKind: kind ?? .financing)
         }
+        .sheet(isPresented: $isImportDocumentPresented) {
+            ImportCreditContractDocumentSheet(store: store, defaultKind: kind)
+        }
+        .sheet(item: $planningContract) { contract in
+            AmortizationPlannerSheet(store: store, contract: contract)
+        }
         .sheet(item: $simulatingContract) { contract in
             AmortizationSimulatorSheet(store: store, contract: contract)
         }
         .sheet(item: $settlingContract) { contract in
             SettleContractSheet(store: store, contract: contract)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { reschedulingExpiredItem != nil },
+                set: { if !$0 { reschedulingExpiredItem = nil } }
+            )
+        ) {
+            if let entry = reschedulingExpiredItem {
+                NavigationStack {
+                    Form {
+                        Section("Reagendar Amortização Planejada") {
+                            HStack {
+                                Text("Valor Planejado")
+                                Spacer()
+                                Text(AppFormatters.currency(entry.item.amountDouble))
+                                    .bold()
+                            }
+                            DatePicker("Nova Data", selection: $rescheduleTargetDate, in: Date()..., displayedComponents: [.date])
+                        }
+                    }
+                    .navigationTitle("Reagendar Aporte")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancelar") { reschedulingExpiredItem = nil }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Salvar") {
+                                store.rescheduleExpiredAmortization(
+                                    contractId: entry.contractId,
+                                    itemId: entry.item.id,
+                                    newDate: rescheduleTargetDate
+                                )
+                                reschedulingExpiredItem = nil
+                            }
+                            .bold()
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
         }
         .alert(
             "Excluir Contrato",
@@ -171,9 +234,15 @@ public struct CreditContractsView: View {
                         }
 
                         HStack(spacing: 6) {
-                            Text("\(contract.amortizationSystem.rawValue) • Dia \(contract.billingDay)")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.secondary)
+                            if contract.effectiveBankDueDay != contract.billingDay {
+                                Text("\(contract.amortizationSystem.rawValue) • Cobrança Salário: Dia \(contract.billingDay) • Venc. Banco: Dia \(contract.effectiveBankDueDay)")
+                                    .font(.system(size: 10.5))
+                                    .foregroundStyle(Color.secondary)
+                            } else {
+                                Text("\(contract.amortizationSystem.rawValue) • Dia \(contract.billingDay)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.secondary)
+                            }
 
                             if contract.kind == .loan && (contract.loanSubtype == .consignado || contract.effectiveLoanModel?.isPayrollDeductible == true) {
                                 Text("• Débito em Folha")
@@ -210,7 +279,15 @@ public struct CreditContractsView: View {
                     if contract.kind == .financing {
                         metricItem(label: "Parcela Base", value: AppFormatters.currency(contract.effectiveBaseInstallmentPrice), color: .secondary)
                         metricItem(label: "Seguros/Taxas", value: AppFormatters.currency(contract.effectiveInsuranceFee + contract.effectiveAdminFee), color: .secondary)
-                        metricItem(label: "Indexador", value: contract.indexationRate?.rawValue ?? "TR", color: .secondary)
+                        if let growth = contract.averageMonthlyInstallmentGrowth, growth > 0.0001 {
+                            metricItem(
+                                label: "Projeção Correção",
+                                value: "+\(AppFormatters.currency(growth))/mês",
+                                color: Color(hex: "#F59E0B")
+                            )
+                        } else {
+                            metricItem(label: "Indexador", value: contract.indexationRate?.rawValue ?? "TR", color: .secondary)
+                        }
                     } else {
                         metricItem(label: "Total Contratado", value: AppFormatters.currency(contract.totalContractedAmount), color: .secondary)
                         metricItem(label: "Soma Nominal", value: AppFormatters.currency(nominalRemaining), color: .secondary)
@@ -325,40 +402,148 @@ public struct CreditContractsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "#10B981").opacity(0.25), lineWidth: 1))
                 }
 
-                // Botões de Ação: Amortizar e Quitar
-                if !contract.isSettled {
+                // Banner de Resolução Assistida para Amortizações Planejadas Vencidas
+                let expiredItems = store.expiredPlannedAmortizations(for: contract.id)
+                if !expiredItems.isEmpty {
+                    ForEach(expiredItems) { expiredItem in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                                Text("Amortização Planejada Vencida em \(AppFormatters.shortDate(expiredItem.date)): \(AppFormatters.currency(expiredItem.amountDouble))")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                            }
+
+                            HStack(spacing: 8) {
+                                Button {
+                                    store.confirmPlannedAmortizationPayment(
+                                        contractId: contract.id,
+                                        itemId: expiredItem.id
+                                    )
+                                } label: {
+                                    Text("Confirmar que paguei")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(Capsule().fill(Color(hex: "#10B981")))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    rescheduleTargetDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+                                    reschedulingExpiredItem = (contractId: contract.id, item: expiredItem)
+                                } label: {
+                                    Text("Reagendar data")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Color(hex: "#0284C7"))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.15)))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    store.removePlannedAmortization(
+                                        contractId: contract.id,
+                                        itemId: expiredItem.id
+                                    )
+                                } label: {
+                                    Text("Descartar")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Color(hex: "#EF4444"))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(Capsule().fill(Color(hex: "#EF4444").opacity(0.15)))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: "#F59E0B").opacity(0.12)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "#F59E0B").opacity(0.35), lineWidth: 1))
+                    }
+                }
+
+                // Resumo do Planejamento de Amortização Salvo (se houver)
+                let hasSavedPlan = store.hasSavedAmortizationPlan(for: contract.id)
+                if hasSavedPlan, let proj = store.loanProjection(for: contract.id) {
+                    let isFullPayoff = proj.doesPlanAchieveFullPayoff && proj.monthsSaved > 0
                     HStack(spacing: 10) {
+                        Image(systemName: isFullPayoff ? "checkmark.seal.fill" : "sparkles.rectangle.stack.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(hex: isFullPayoff ? "#10B981" : "#8B5CF6"))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(isFullPayoff ? "Plano Ativo: Quitação Total Projetada" : "Plano de Amortização Ativo")
+                                .font(.system(size: 11.5, weight: .bold))
+                                .foregroundStyle(Color(hex: isFullPayoff ? "#10B981" : "#8B5CF6"))
+
+                            Text("\(proj.monthsSaved) parcelas eliminadas • Economia: \(AppFormatters.currency(NSDecimalNumber(decimal: proj.totalInterestSaved).doubleValue))")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(hex: isFullPayoff ? "#10B981" : "#8B5CF6").opacity(0.1)))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: isFullPayoff ? "#10B981" : "#8B5CF6").opacity(0.3), lineWidth: 1))
+                }
+
+                // Botões de Ação: Planejar/Ver Planejamento, Amortizar Manual e Quitar
+                if !contract.isSettled {
+                    VStack(spacing: 8) {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            simulatingContract = contract
+                            planningContract = contract
                         } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "arrow.down.forward.and.arrow.up.backward.circle.fill")
-                                Text("Amortizar")
+                            HStack(spacing: 6) {
+                                Image(systemName: hasSavedPlan ? "doc.text.magnifyingglass" : "wand.and.stars")
+                                Text(hasSavedPlan ? "Ver Planejamento" : "Planejar Amortização")
                             }
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color(hex: "#0284C7"))
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.14)))
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color(hex: hasSavedPlan ? "#7C3AED" : "#8B5CF6")))
                         }
                         .buttonStyle(.plain)
 
-                        Button {
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            settlingContract = contract
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "checkmark.seal.fill")
-                                Text("Quitar Contrato")
+                        HStack(spacing: 10) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                simulatingContract = contract
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "bolt.circle.fill")
+                                    Text("Amortizar Agora")
+                                }
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color(hex: "#0284C7"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.14)))
                             }
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(Color(hex: "#10B981")))
+                            .buttonStyle(.plain)
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                settlingContract = contract
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "checkmark.seal.fill")
+                                    Text("Quitar Contrato")
+                                }
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Capsule().fill(Color(hex: "#10B981")))
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -836,6 +1021,898 @@ public struct AmortizationSimulatorSheet: View {
                     selectedAccountId = first.id
                 }
             }
+        }
+    }
+}
+
+// MARK: - Importação de Documento Oficial (Santander DDC & Caixa Evolução Habitação)
+
+public struct ImportCreditContractDocumentSheet: View {
+    @ObservedObject var store: FinancialDataStore
+    public let defaultKind: CreditContractKind?
+    @Environment(\.dismiss) var dismiss
+
+    @State private var rawDocumentText: String = ""
+    @State private var parsedDocument: ParsedCreditContractDocument? = nil
+    @State private var customContractName: String = ""
+    @State private var manualSalaryBillingDay: Int = 1
+    @State private var selectedAccountId: UUID = UUID()
+    @State private var selectedCategoryId: UUID = UUID()
+    @State private var isFileImporterPresented: Bool = false
+    @State private var importErrorMessage: String? = nil
+
+    public init(store: FinancialDataStore, defaultKind: CreditContractKind? = nil) {
+        self.store = store
+        self.defaultKind = defaultKind
+    }
+
+    private var salaryPreview: (
+        paidCount: Int,
+        remainingCount: Int,
+        firstFutureBillingDate: Date,
+        remainingBalance: Double,
+        nextInstallmentAmount: Double
+    )? {
+        parsedDocument?.recalculatedForSalaryBillingDay(manualSalaryBillingDay, referenceNow: store.effectiveCurrentDate)
+    }
+
+    public var body: some View {
+        NavigationStack {
+            Form {
+                Section("1. Selecionar Documento ou Modelo Oficial") {
+                    Button {
+                        isFileImporterPresented = true
+                    } label: {
+                        Label("Selecionar PDF ou Texto do Contrato...", systemImage: "doc.badge.plus")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("Carregar DDC Santander") {
+                            rawDocumentText = SampleContractDocumentsData.santanderLoanOCRText
+                            parseCurrentText(expectedKind: .loan)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button("Carregar Evolução Caixa") {
+                            rawDocumentText = SampleContractDocumentsData.caixaFinancingOCRText
+                            parseCurrentText(expectedKind: .financing)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
+                    DisclosureGroup("Colar ou Editar Texto Extraído") {
+                        TextEditor(text: $rawDocumentText)
+                            .frame(minHeight: 100)
+                            .font(.system(size: 11, design: .monospaced))
+                        Button("Processar Texto") {
+                            parseCurrentText(expectedKind: defaultKind ?? .financing)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+
+                if let importErrorMessage {
+                    Section {
+                        Text(importErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if let doc = parsedDocument, let preview = salaryPreview {
+                    Section("2. Dia de Cobrança no Salário vs Vencimento no Banco") {
+                        Stepper("Dia de Cobrança (Salário/Conta): Dia \(manualSalaryBillingDay)", value: $manualSalaryBillingDay, in: 1...31)
+                            .font(.system(size: 13, weight: .bold))
+
+                        HStack {
+                            Text("Dia de Recebimento no Banco (PDF)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("Dia \(doc.bankDueDay)")
+                                .font(.caption.bold())
+                                .foregroundStyle(Color(hex: "#0284C7"))
+                        }
+
+                        Text("O número de parcelas já pagas (\(preview.paidCount) de \(doc.totalInstallments)) é calculado automaticamente com base no dia em que o valor sai do seu salário (Dia \(manualSalaryBillingDay)).")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Section("3. Dados Extraídos do Contrato") {
+                        TextField("Nome do Contrato", text: $customContractName)
+
+                        HStack {
+                            Text("Instituição / Tipo")
+                            Spacer()
+                            Text("\(doc.institutionName) • \(doc.kind.rawValue)")
+                                .font(.caption.bold())
+                                .foregroundStyle(Color(hex: "#8B5CF6"))
+                        }
+
+                        HStack {
+                            Text("Nº do Contrato")
+                            Spacer()
+                            Text(doc.contractNumber)
+                                .font(.system(.caption, design: .monospaced))
+                        }
+
+                        HStack {
+                            Text("Saldo Devedor para Quitação Hoje")
+                            Spacer()
+                            Text(AppFormatters.currency(preview.remainingBalance))
+                                .font(.system(.body, design: .monospaced))
+                                .bold()
+                                .foregroundStyle(Color(hex: "#10B981"))
+                        }
+
+                        HStack {
+                            Text("Parcela Base Cadastrada")
+                            Spacer()
+                            Text(AppFormatters.currency(doc.installmentAmount))
+                                .font(.system(.body, design: .monospaced))
+                                .bold()
+                        }
+
+                        if let avgGrowth = doc.averageMonthlyInstallmentGrowth, avgGrowth > 0 {
+                            HStack {
+                                Text("Projeção Média Mensal (TP)")
+                                Spacer()
+                                Text("+\(AppFormatters.currency(avgGrowth))/mês")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .bold()
+                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                            }
+                        }
+
+                        if !doc.scheduledInstallments.isEmpty {
+                            HStack {
+                                Text("Cronograma VLR. PARC Decrescente")
+                                Spacer()
+                                Text("\(doc.scheduledInstallments.count) parcelas mapeadas")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                            }
+                        }
+
+                        HStack {
+                            Text("Taxa Efetiva Mensal")
+                            Spacer()
+                            Text(String(format: "%.4f%% a.m.", doc.monthlyInterestRate))
+                                .font(.system(.caption, design: .monospaced))
+                        }
+
+                        HStack {
+                            Text("Progresso Apurado (Ref. Salário)")
+                            Spacer()
+                            Text("\(preview.paidCount) pagas • \(preview.remainingCount) restantes (Total \(doc.totalInstallments))")
+                                .font(.caption.bold())
+                        }
+
+                        Picker("Conta Bancária", selection: $selectedAccountId) {
+                            ForEach(store.accounts) { acc in
+                                Text(acc.name).tag(acc.id)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Importar Contrato")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Importar") {
+                        guard let doc = parsedDocument, let preview = salaryPreview else { return }
+                        let finalName = customContractName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? doc.name
+                            : customContractName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        _ = store.createCreditContract(
+                            kind: doc.kind,
+                            name: finalName,
+                            contractNumber: doc.contractNumber,
+                            loanSubtype: doc.loanSubtype,
+                            financingSubtype: doc.financingSubtype,
+                            amortizationSystem: doc.amortizationSystem,
+                            totalContractedAmount: doc.totalContractedAmount,
+                            outstandingBalance: preview.remainingBalance,
+                            installmentAmount: doc.installmentAmount,
+                            billingDay: manualSalaryBillingDay,
+                            totalInstallments: doc.totalInstallments,
+                            monthlyInterestRate: doc.monthlyInterestRate,
+                            startDate: doc.startDate,
+                            accountId: selectedAccountId,
+                            categoryId: selectedCategoryId,
+                            notes: doc.extractedNotes,
+                            referenceDate: store.effectiveCurrentDate,
+                            overridePastInstallmentsCount: preview.paidCount,
+                            overrideFirstFutureBillingDate: preview.firstFutureBillingDate,
+                            annualNominalInterestRate: doc.annualNominalInterestRate,
+                            indexationRate: doc.indexationRate,
+                            adminFee: doc.adminFee,
+                            insuranceFee: doc.insuranceFee,
+                            baseInstallmentAmount: doc.baseInstallmentAmount,
+                            bankDueDay: doc.bankDueDay,
+                            documentReferenceDate: doc.referenceDate,
+                            maturityDate: doc.maturityDate,
+                            scheduledInstallments: doc.scheduledInstallments,
+                            averageMonthlyInstallmentGrowth: doc.averageMonthlyInstallmentGrowth
+                        )
+                        dismiss()
+                    }
+                    .bold()
+                    .disabled(parsedDocument == nil)
+                }
+            }
+            .fileImporter(
+                isPresented: $isFileImporterPresented,
+                allowedContentTypes: [.pdf, .plainText, .text],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    let secured = url.startAccessingSecurityScopedResource()
+                    defer {
+                        if secured { url.stopAccessingSecurityScopedResource() }
+                    }
+                    let extracted = ContractDocumentImportService.extractText(from: url)
+                    if !extracted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        rawDocumentText = extracted
+                        parseCurrentText(expectedKind: defaultKind ?? .financing)
+                    } else {
+                        importErrorMessage = "Não foi possível ler o texto do arquivo selecionado."
+                    }
+                case .failure(let error):
+                    importErrorMessage = "Erro ao abrir arquivo: \(error.localizedDescription)"
+                }
+            }
+            .onAppear {
+                if let firstAcc = store.accounts.first {
+                    selectedAccountId = firstAcc.id
+                }
+                if let firstCat = store.categories.first(where: { $0.type == .expense }) ?? store.categories.first {
+                    selectedCategoryId = firstCat.id
+                }
+                if defaultKind == .loan {
+                    rawDocumentText = SampleContractDocumentsData.santanderLoanOCRText
+                } else if defaultKind == .financing {
+                    rawDocumentText = SampleContractDocumentsData.caixaFinancingOCRText
+                }
+                if !rawDocumentText.isEmpty {
+                    parseCurrentText(expectedKind: defaultKind ?? .financing)
+                }
+            }
+        }
+    }
+
+    private func parseCurrentText(expectedKind: CreditContractKind) {
+        importErrorMessage = nil
+        let parsed = ContractDocumentImportService.parseContractDocumentText(rawDocumentText, expectedKind: expectedKind)
+        parsedDocument = parsed
+        customContractName = parsed.name
+        manualSalaryBillingDay = parsed.billingDay
+    }
+}
+
+// MARK: - Planejador Dinâmico de Amortização (2 Estados: Edição vs Visualização + Início, Meio e Fim)
+
+public struct AmortizationPlannerSheet: View {
+    @ObservedObject var store: FinancialDataStore
+    public let contract: CreditContract
+    @Environment(\.dismiss) var dismiss
+
+    @State private var draftPlan: AmortizationPlan
+    @State private var isEditingMode: Bool
+    @State private var newItemDate: Date = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
+    @State private var newItemAmountText: String = "R$ 2.000,00"
+    @State private var newItemStrategy: AmortizationRecalculationMode = .reduceTerm
+    @State private var newItemFundingSource: AmortizationFundingSource = .cash
+    @State private var newItemNote: String = ""
+    @State private var isPresentingManualSimulator: Bool = false
+    @State private var isConfirmingDeletePlan: Bool = false
+
+    public init(store: FinancialDataStore, contract: CreditContract) {
+        self.store = store
+        self.contract = contract
+        let hasSaved = store.hasSavedAmortizationPlan(for: contract.id)
+        let initialPlan = store.amortizationPlan(for: contract.id) ?? AmortizationPlan(
+            contractId: contract.id,
+            generationMode: .manual,
+            billingDay: contract.billingDay,
+            incomeCommitmentPercentage: Decimal(30),
+            defaultRecalculationMode: .reduceTerm,
+            estimatedMonthlyTR: LoanProjectionEngine.toDecimal(contract.estimatedMonthlyTR ?? 0.0),
+            items: []
+        )
+        _draftPlan = State(initialValue: initialPlan)
+        _isEditingMode = State(initialValue: !hasSaved)
+    }
+
+    private var activePlanForProjection: AmortizationPlan {
+        if isEditingMode {
+            return draftPlan
+        }
+        return store.amortizationPlan(for: contract.id) ?? draftPlan
+    }
+
+    private var projectionResult: LoanProjectionResult? {
+        store.simulateAmortizationPlanPreview(for: contract.id, draftPlan: activePlanForProjection)
+    }
+
+    private var isLoanAlreadyPaidOffByPlan: Bool {
+        guard let proj = projectionResult else { return false }
+        return proj.doesPlanAchieveFullPayoff && !activePlanForProjection.items.isEmpty
+    }
+
+    private var maxAvailableToAmortizeOnSelectedDate: Double {
+        store.maxAvailableLoanBalanceToAmortize(
+            for: contract.id,
+            draftItems: activePlanForProjection.items,
+            onDate: newItemDate,
+            estimatedMonthlyTR: activePlanForProjection.estimatedMonthlyTR
+        )
+    }
+
+    private var parsedTypedContribution: Double {
+        let raw = AppFormatters.parseAmount(newItemAmountText) ?? 0.0
+        return min(max(0.0, raw), maxAvailableToAmortizeOnSelectedDate)
+    }
+
+    private var liveExpectedBalanceAfterContribution: Double {
+        store.expectedMonthEndCashBalance(
+            for: newItemDate,
+            contractId: contract.id,
+            draftPlan: activePlanForProjection,
+            draftProjection: projectionResult,
+            additionalTypingOutflow: (isEditingMode && newItemFundingSource == .cash) ? parsedTypedContribution : 0.0
+        )
+    }
+
+    private var liveLoanBalanceAfterContribution: Double {
+        max(0.0, maxAvailableToAmortizeOnSelectedDate - (isEditingMode ? parsedTypedContribution : 0.0))
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Atalho superior para Amortização Manual Imediata + Modo do Planejador
+                    HStack(spacing: 8) {
+                        HStack(spacing: 5) {
+                            Image(systemName: isEditingMode ? "pencil.and.outline" : "checkmark.shield.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(isEditingMode ? "Modo Criação / Edição" : "Planejamento Salvo")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Color(hex: isEditingMode ? "#8B5CF6" : "#10B981"))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(Color(hex: isEditingMode ? "#8B5CF6" : "#10B981").opacity(0.15)))
+
+                        Spacer()
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            isPresentingManualSimulator = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bolt.circle.fill")
+                                Text("Amortização Manual")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color(hex: "#0284C7"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.14)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Jornada em 3 Cards: 1. INÍCIO → 2. MEIO → 3. FIM
+                    if let proj = projectionResult {
+                        journeyThreeCardsSection(proj: proj)
+                    }
+
+                    // Se estiver em modo Edição, exibe o Painel de Inserção de Aportes
+                    if isEditingMode {
+                        contributionInsertionCard
+                    } else {
+                        // Ações do Modo Visualização (Editar ou Remover Planejamento)
+                        HStack(spacing: 12) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                if let saved = store.amortizationPlan(for: contract.id) {
+                                    draftPlan = saved
+                                }
+                                withAnimation {
+                                    isEditingMode = true
+                                }
+                            } label: {
+                                Label("Editar Planejamento", systemImage: "pencil")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Capsule().fill(Color(hex: "#8B5CF6")))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                isConfirmingDeletePlan = true
+                            } label: {
+                                Label("Remover", systemImage: "trash")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#EF4444"))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 10)
+                                    .background(Capsule().fill(Color(hex: "#EF4444").opacity(0.14)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    // Lista Unificada Clean: Aportes Planejados & Evolução Mês a Mês
+                    if let proj = projectionResult {
+                        unifiedEvolutionAndContributionsSection(proj: proj)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+            .background(LiquidColors.background(for: .dark).ignoresSafeArea())
+            .navigationTitle(isEditingMode ? "Planejar Amortização" : "Ver Planejamento")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Fechar") { dismiss() }
+                }
+                if isEditingMode {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Salvar") {
+                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                            _ = store.saveAmortizationPlan(
+                                contractId: contract.id,
+                                generationMode: draftPlan.generationMode,
+                                billingDay: draftPlan.billingDay,
+                                incomeCommitmentPercentage: draftPlan.incomeCommitmentPercentage,
+                                defaultRecalculationMode: draftPlan.defaultRecalculationMode,
+                                estimatedMonthlyTR: draftPlan.estimatedMonthlyTR,
+                                draftItems: draftPlan.items
+                            )
+                            store.budgetProjectionScenario = .withPlanning
+                            withAnimation {
+                                isEditingMode = false
+                            }
+                        }
+                        .bold()
+                        .disabled(draftPlan.items.isEmpty)
+                    }
+                }
+            }
+            .sheet(isPresented: $isPresentingManualSimulator) {
+                AmortizationSimulatorSheet(store: store, contract: contract)
+            }
+            .alert("Remover Planejamento", isPresented: $isConfirmingDeletePlan) {
+                Button("Cancelar", role: .cancel) {}
+                Button("Remover Plano", role: .destructive) {
+                    store.deleteAmortizationPlan(for: contract.id)
+                    dismiss()
+                }
+            } message: {
+                Text("Deseja cancelar e remover este planejamento de amortização? As transações futuras voltarão ao cenário base original.")
+            }
+        }
+    }
+
+    // MARK: - 1. INÍCIO → 2. MEIO → 3. FIM
+    private func journeyThreeCardsSection(proj: LoanProjectionResult) -> some View {
+        let totalPlanned = activePlanForProjection.items
+            .filter { $0.status == .pending || $0.status == .executed }
+            .reduce(0.0) { $0 + $1.amountDouble }
+        let interestSavedDouble = NSDecimalNumber(decimal: proj.totalInterestSaved).doubleValue
+        let startBal = NSDecimalNumber(decimal: proj.currentRealBalance).doubleValue
+        let endBal = NSDecimalNumber(decimal: proj.projectedFinalBalanceAfterPlan).doubleValue
+        let achievesPayoff = proj.doesPlanAchieveFullPayoff && !activePlanForProjection.items.isEmpty
+
+        return VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                // 1. INÍCIO
+                LiquidGlassCard(cornerRadius: 16, padding: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("1. INÍCIO (ATUAL)")
+                            .font(.system(size: 9.5, weight: .heavy))
+                            .foregroundStyle(Color.secondary)
+                        Text(AppFormatters.currency(startBal))
+                            .font(.system(size: 13.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color(hex: "#EF4444"))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Text("\(proj.originalRemainingMonths) parcelas restantes")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                // 2. MEIO
+                LiquidGlassCard(cornerRadius: 16, padding: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("2. MEIO (PLANO)")
+                            .font(.system(size: 9.5, weight: .heavy))
+                            .foregroundStyle(Color(hex: "#8B5CF6"))
+                        Text(AppFormatters.currency(totalPlanned))
+                            .font(.system(size: 13.5, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color(hex: "#8B5CF6"))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Text("Economia: \(AppFormatters.currency(interestSavedDouble))")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#10B981"))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            // 3. FIM
+            LiquidGlassCard(cornerRadius: 16, padding: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("3. FIM (RESULTADO DO PLANEJAMENTO)")
+                            .font(.system(size: 9.5, weight: .heavy))
+                            .foregroundStyle(Color(hex: achievesPayoff ? "#10B981" : "#0284C7"))
+                        if achievesPayoff {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                                Text("QUITAÇÃO TOTAL DO EMPRÉSTIMO!")
+                                    .font(.system(size: 13, weight: .heavy))
+                                    .foregroundStyle(Color(hex: "#10B981"))
+                            }
+                        } else {
+                            Text("Saldo Pós-Plano: \(AppFormatters.currency(endBal))")
+                                .font(.system(size: 13.5, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.primary)
+                        }
+                        Text("\(proj.projectedActiveMonths) parcelas restantes (\(proj.monthsSaved) eliminadas)")
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Última Parcela")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Color.secondary)
+                        Text(AppFormatters.monthYear(proj.projectedMaturityDate))
+                            .font(.system(size: 11.5, weight: .bold))
+                            .foregroundStyle(Color(hex: "#10B981"))
+                    }
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(achievesPayoff ? Color(hex: "#10B981").opacity(0.6) : Color.clear, lineWidth: 1.5)
+            )
+        }
+    }
+
+    // MARK: - Painel de Inserção de Aportes (Manual e Automático % da Sobra)
+    private var contributionInsertionCard: some View {
+        let commitmentPctDouble = NSDecimalNumber(decimal: draftPlan.incomeCommitmentPercentage).doubleValue
+
+        return LiquidGlassCard(cornerRadius: 18, padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Modo de Planejamento", selection: $draftPlan.generationMode) {
+                    ForEach(AmortizationPlanGenerationMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if isLoanAlreadyPaidOffByPlan {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(Color(hex: "#10B981"))
+                        Text("Este planejamento já atinge a QUITAÇÃO TOTAL do contrato. Não é necessário adicionar novos aportes.")
+                            .font(.system(size: 11.5, weight: .bold))
+                            .foregroundStyle(Color(hex: "#10B981"))
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: "#10B981").opacity(0.14)))
+                } else if draftPlan.generationMode == .manual {
+                    VStack(alignment: .leading, spacing: 10) {
+                        DatePicker("Data do Aporte", selection: $newItemDate, displayedComponents: [.date])
+                            .font(.system(size: 13, weight: .semibold))
+
+                        // Visibilidade em Tempo Real na mesma linha: Saldo Esperado Fim do Mês & Saldo do Empréstimo Após Amortização
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Saldo Esperado Fim do Mês")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                    .foregroundStyle(Color.secondary)
+                                Text(AppFormatters.currency(liveExpectedBalanceAfterContribution))
+                                    .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(liveExpectedBalanceAfterContribution >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444"))
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Saldo Empréstimo Após Aporte")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                    .foregroundStyle(Color.secondary)
+                                Text(liveLoanBalanceAfterContribution <= 0.01 ? "QUITADO (R$ 0,00)" : AppFormatters.currency(liveLoanBalanceAfterContribution))
+                                    .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(liveLoanBalanceAfterContribution <= 0.01 ? Color(hex: "#10B981") : Color.primary)
+                            }
+                        }
+                        .padding(9)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+
+                        HStack {
+                            Text("Valor do Aporte (Máx: \(AppFormatters.currency(maxAvailableToAmortizeOnSelectedDate)))")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            BRLCurrencyTextField("R$ 0,00", text: $newItemAmountText)
+                        }
+
+                        Picker("Estratégia", selection: $newItemStrategy) {
+                            Text("Reduzir Prazo").tag(AmortizationRecalculationMode.reduceTerm)
+                            Text("Reduzir Parcela").tag(AmortizationRecalculationMode.reduceInstallment)
+                        }
+                        .pickerStyle(.segmented)
+
+                        if contract.kind == .financing {
+                            Picker("Fonte de Recursos", selection: $newItemFundingSource) {
+                                ForEach(AmortizationFundingSource.allCases) { src in
+                                    Text(src.rawValue).tag(src)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+
+                        Button {
+                            addManualPlannedContribution()
+                        } label: {
+                            HStack {
+                                Image(systemName: liveLoanBalanceAfterContribution <= 0.01 ? "checkmark.seal.fill" : "plus.circle.fill")
+                                Text(liveLoanBalanceAfterContribution <= 0.01 ? "Incluir Aporte de Quitação Total" : "Adicionar Aporte ao Plano")
+                            }
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color(hex: liveLoanBalanceAfterContribution <= 0.01 ? "#10B981" : "#8B5CF6")))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(parsedTypedContribution <= 0.01 || maxAvailableToAmortizeOnSelectedDate <= 0.01)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Alocar da Sobra Mensal:")
+                                .font(.system(size: 12.5, weight: .semibold))
+                            Spacer()
+                            Text("\(Int(commitmentPctDouble))%")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color(hex: "#8B5CF6"))
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { NSDecimalNumber(decimal: draftPlan.incomeCommitmentPercentage).doubleValue },
+                                set: { draftPlan.incomeCommitmentPercentage = Decimal(Int($0)) }
+                            ),
+                            in: 5...100,
+                            step: 5
+                        )
+                        .tint(Color(hex: "#8B5CF6"))
+
+                        Button {
+                            generateAutomaticSurplusContributions()
+                        } label: {
+                            HStack {
+                                Image(systemName: "wand.and.stars")
+                                Text("Gerar Aportes com \(Int(commitmentPctDouble))% da Sobra")
+                            }
+                            .font(.system(size: 12.5, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color(hex: "#8B5CF6")))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Lista Unificada Clean: Evolução Mês a Mês com Aportes Planejados
+    private func unifiedEvolutionAndContributionsSection(proj: LoanProjectionResult) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Seção 1: Aportes Planejados
+            if !activePlanForProjection.items.isEmpty {
+                LiquidGlassCard(cornerRadius: 18, padding: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Aportes Planejados (\(activePlanForProjection.items.count))")
+                                .font(.system(size: 13.5, weight: .bold))
+                            Spacer()
+                            if isEditingMode {
+                                Button("Limpar Todos") {
+                                    draftPlan.items.removeAll()
+                                }
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color(hex: "#EF4444"))
+                            }
+                        }
+
+                        ForEach(activePlanForProjection.items.sorted(by: { $0.date < $1.date })) { item in
+                            let outcome = proj.plannedItemOutcomes[item.id]
+                            let leadsToPayoff = outcome?.isFullPayoffStep == true
+                            let expectedMonthSurplus = store.expectedMonthEndCashBalance(
+                                for: item.date,
+                                contractId: contract.id,
+                                draftPlan: activePlanForProjection,
+                                draftProjection: proj
+                            )
+                            let balanceAfter = NSDecimalNumber(decimal: outcome?.remainingBalanceAfter ?? 0).doubleValue
+                            let effectiveAmt = NSDecimalNumber(decimal: outcome?.effectiveAmortization ?? item.amount).doubleValue
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: leadsToPayoff ? "checkmark.seal.fill" : "calendar.badge.plus")
+                                            .foregroundStyle(Color(hex: leadsToPayoff ? "#10B981" : "#8B5CF6"))
+                                        Text(AppFormatters.shortDate(item.date))
+                                            .font(.system(size: 12.5, weight: .bold))
+                                        if leadsToPayoff {
+                                            Text("QUITAÇÃO TOTAL")
+                                                .font(.system(size: 9, weight: .heavy))
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 1.5)
+                                                .background(Capsule().fill(Color(hex: "#10B981").opacity(0.2)))
+                                                .foregroundStyle(Color(hex: "#10B981"))
+                                        }
+                                    }
+                                    Spacer()
+                                    Text(AppFormatters.currency(effectiveAmt))
+                                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(Color(hex: leadsToPayoff ? "#10B981" : "#8B5CF6"))
+
+                                    if isEditingMode {
+                                        Button {
+                                            draftPlan.items.removeAll { $0.id == item.id }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(Color.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                // Mesma linha: Saldo Esperado Fim do Mês + Saldo do Empréstimo Após Amortização
+                                HStack {
+                                    Text("Saldo Fim do Mês: \(AppFormatters.currency(expectedMonthSurplus))")
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(expectedMonthSurplus >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444"))
+                                    Spacer()
+                                    Text("Saldo Empréstimo: \(leadsToPayoff ? "R$ 0,00 (Quitado)" : AppFormatters.currency(balanceAfter))")
+                                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(leadsToPayoff ? Color(hex: "#10B981") : Color.secondary)
+                                }
+                            }
+                            .padding(9)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color(hex: leadsToPayoff ? "#10B981" : "#8B5CF6").opacity(0.09))
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Seção 2: Evolução Mês a Mês Unificada Clean
+            LiquidGlassCard(cornerRadius: 18, padding: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Evolução Mês a Mês e Aportes")
+                        .font(.system(size: 13.5, weight: .bold))
+
+                    ForEach(proj.timeline.prefix(36)) { row in
+                        let isExtra = row.eventKind == .extraAmortization || row.eventKind == .fgtsAmortization
+                        let isShadowed = row.status == .shadowed
+                        let rowBalanceAfter = NSDecimalNumber(decimal: row.finalBalance).doubleValue
+                        let rowAmount = NSDecimalNumber(decimal: row.totalBudgetOutflow).doubleValue
+                        let isZeroPayoffRow = rowBalanceAfter <= 0.01 && !isShadowed
+                        let monthEndExpected = store.expectedMonthEndCashBalance(
+                            for: row.date,
+                            contractId: contract.id,
+                            draftPlan: activePlanForProjection,
+                            draftProjection: proj
+                        )
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(Color(hex: isZeroPayoffRow ? "#10B981" : (isExtra ? "#8B5CF6" : (isShadowed ? "#6B7280" : "#0284C7"))))
+                                        .frame(width: 7, height: 7)
+                                    Text(AppFormatters.monthYear(row.date))
+                                        .font(.system(size: 11.5, weight: .bold))
+                                    Text("• \(row.title)")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(isShadowed ? Color.secondary : Color.primary)
+                                        .strikethrough(isShadowed, color: .secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Text(isShadowed ? "Eliminada" : AppFormatters.currency(rowAmount))
+                                    .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(isZeroPayoffRow ? Color(hex: "#10B981") : (isExtra ? Color(hex: "#8B5CF6") : Color.primary))
+                            }
+
+                            if !isShadowed {
+                                HStack {
+                                    Text("Saldo Fim do Mês: \(AppFormatters.currency(monthEndExpected))")
+                                        .font(.system(size: 9.5, design: .monospaced))
+                                        .foregroundStyle(monthEndExpected >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444"))
+                                    Spacer()
+                                    Text(isZeroPayoffRow ? "Saldo Empréstimo: R$ 0,00 (QUITAÇÃO)" : "Saldo Empréstimo: \(AppFormatters.currency(rowBalanceAfter))")
+                                        .font(.system(size: 9.5, weight: isZeroPayoffRow ? .heavy : .medium, design: .monospaced))
+                                        .foregroundStyle(isZeroPayoffRow ? Color(hex: "#10B981") : Color.secondary)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        Divider().opacity(0.25)
+                    }
+                }
+            }
+        }
+    }
+
+    private func addManualPlannedContribution() {
+        let clampedAmount = parsedTypedContribution
+        guard clampedAmount > 0.01 else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let item = PlannedAmortization(
+            contractId: contract.id,
+            date: newItemDate,
+            amount: Decimal(string: String(format: "%.2f", clampedAmount)) ?? 0,
+            source: newItemFundingSource,
+            mode: contract.kind == .loan ? .reduceTerm : newItemStrategy,
+            status: .pending,
+            notes: newItemNote.isEmpty ? "Aporte Planejado" : newItemNote
+        )
+        draftPlan.items.append(item)
+        draftPlan.items.sort { $0.date < $1.date }
+        draftPlan.updatedAt = Date()
+
+        if let nextMonth = Calendar.current.date(byAdding: .month, value: 1, to: newItemDate) {
+            newItemDate = nextMonth
+        }
+    }
+
+    private func generateAutomaticSurplusContributions() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if let generatedPlan = store.generateAutomaticAmortizationPlan(
+            contractId: contract.id,
+            billingDay: draftPlan.billingDay,
+            incomeCommitmentPercentage: draftPlan.incomeCommitmentPercentage,
+            mode: contract.kind == .loan ? .reduceTerm : draftPlan.defaultRecalculationMode,
+            estimatedMonthlyTR: draftPlan.estimatedMonthlyTR
+        ) {
+            draftPlan = generatedPlan
         }
     }
 }

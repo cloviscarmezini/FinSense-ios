@@ -152,6 +152,7 @@ public struct FinancialDatabaseSnapshot: Codable {
     public var investments: [InvestmentItem]
     public var debts: [DebtItem]
     public var contracts: [CreditContract]
+    public var amortizationPlans: [AmortizationPlan]?
     public var provisions: [CategoryProvision]?
     public var categoryQuotas: [CategoryQuotaRule]?
 
@@ -163,6 +164,7 @@ public struct FinancialDatabaseSnapshot: Codable {
         investments: [InvestmentItem] = [],
         debts: [DebtItem] = [],
         contracts: [CreditContract] = [],
+        amortizationPlans: [AmortizationPlan]? = [],
         provisions: [CategoryProvision]? = [],
         categoryQuotas: [CategoryQuotaRule]? = []
     ) {
@@ -173,6 +175,7 @@ public struct FinancialDatabaseSnapshot: Codable {
         self.investments = investments
         self.debts = debts
         self.contracts = contracts
+        self.amortizationPlans = amortizationPlans
         self.provisions = provisions
         self.categoryQuotas = categoryQuotas
     }
@@ -180,14 +183,36 @@ public struct FinancialDatabaseSnapshot: Codable {
 
 @MainActor
 public final class FinancialDataStore: ObservableObject {
-    @Published public var accounts: [BankAccount] = []
-    @Published public var categories: [CategoryItem] = []
-    @Published public var transactions: [FinancialTransaction] = []
-    @Published public var investments: [InvestmentItem] = []
-    @Published public var debts: [DebtItem] = []
-    @Published public var contracts: [CreditContract] = []
-    @Published public var provisions: [CategoryProvision] = []
-    @Published public var categoryQuotas: [CategoryQuotaRule] = []
+    @Published public var accounts: [BankAccount] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var categories: [CategoryItem] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var transactions: [FinancialTransaction] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var investments: [InvestmentItem] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var debts: [DebtItem] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var contracts: [CreditContract] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var amortizationPlans: [AmortizationPlan] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var budgetProjectionScenario: BudgetProjectionScenario = .withPlanning {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var provisions: [CategoryProvision] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
+    @Published public var categoryQuotas: [CategoryQuotaRule] = [] {
+        didSet { invalidateDerivedCaches() }
+    }
 
     @Published public var selectedMonth: Date = Date() {
         didSet {
@@ -196,13 +221,60 @@ public final class FinancialDataStore: ObservableObject {
     }
     @Published public var dashboardPeriodMode: DashboardPeriodMode = .monthly
     @Published public var isHideBalancesEnabled: Bool = false
+    @Published public private(set) var dataRevision: UInt64 = 0
+
+    @Published public var simulatedCurrentDate: Date? = nil {
+        didSet {
+            invalidateDerivedCaches()
+            validateExpiredAmortizationPlans()
+        }
+    }
+
+    private var isBatchLoading: Bool = false
+    private var cachedTransactionsByYM: [Int: [FinancialTransaction]]? = nil
+    private var cachedTransactionsByYear: [Int: [FinancialTransaction]]? = nil
+    private var cachedLoanProjections: [UUID: LoanProjectionResult] = [:]
+    private var cachedActiveProjectionSnapshot: (shadowedTxIds: Set<UUID>, projectedInstallmentAmounts: [UUID: Double], payoffTxIds: Set<UUID>)? = nil
+    private var cachedKPISummaryByKey: [Int: UnifiedFinancialKPISummary] = [:]
+    private var maxMaterializedRecurringDate: Date? = nil
+
+    public func invalidateDerivedCaches() {
+        cachedTransactionsByYM = nil
+        cachedTransactionsByYear = nil
+        cachedLoanProjections.removeAll(keepingCapacity: true)
+        cachedActiveProjectionSnapshot = nil
+        cachedKPISummaryByKey.removeAll(keepingCapacity: true)
+        maxMaterializedRecurringDate = nil
+        if !isBatchLoading {
+            dataRevision &+= 1
+        }
+    }
+
+    private func ensureTransactionIndexesBuilt() {
+        guard cachedTransactionsByYM == nil || cachedTransactionsByYear == nil else { return }
+        var byYM: [Int: [FinancialTransaction]] = [:]
+        var byYear: [Int: [FinancialTransaction]] = [:]
+        byYM.reserveCapacity(24)
+        byYear.reserveCapacity(4)
+
+        for tx in transactions {
+            let comps = calendar.dateComponents([.year, .month], from: tx.date)
+            if let y = comps.year, let m = comps.month {
+                let ymKey = y * 100 + m
+                byYM[ymKey, default: []].append(tx)
+                byYear[y, default: []].append(tx)
+            }
+        }
+        cachedTransactionsByYM = byYM
+        cachedTransactionsByYear = byYear
+    }
 
     public weak var cloudSyncService: CloudSyncService?
 
     public let databaseFileURL: URL
     public let attachmentsDirectoryURL: URL
 
-    public var effectiveCurrentDate: Date { Date() }
+    public var effectiveCurrentDate: Date { simulatedCurrentDate ?? Date() }
 
     public let calendar: Calendar = {
         var cal = Calendar(identifier: .gregorian)
@@ -237,6 +309,7 @@ public final class FinancialDataStore: ObservableObject {
             self.investments = decoded.investments
             self.debts = decoded.debts
             self.contracts = decoded.contracts
+            self.amortizationPlans = decoded.amortizationPlans ?? []
             self.provisions = decoded.provisions ?? []
             self.categoryQuotas = decoded.categoryQuotas ?? []
             ensureRecurringTransactionsMaterialized(upTo: endOfYear(for: selectedMonth))
@@ -256,9 +329,19 @@ public final class FinancialDataStore: ObservableObject {
                     mutatedData = true
                 }
             }
-            if mutatedData {
+            if migrateExistingSantanderContractsIfNeeded() {
+                mutatedData = true
+            }
+            if migrateExistingCaixaContractsIfNeeded() {
+                mutatedData = true
+            }
+            for plan in self.amortizationPlans {
+                syncPlannedAmortizationTransactions(for: plan.contractId, saveAfter: false)
+            }
+            if mutatedData || !self.amortizationPlans.isEmpty {
                 saveToDisk()
             }
+            validateExpiredAmortizationPlans()
         } else {
             self.categories = DefaultCategoriesCatalog.buildInitialCategories()
             self.accounts = []
@@ -266,6 +349,7 @@ public final class FinancialDataStore: ObservableObject {
             self.investments = []
             self.debts = []
             self.contracts = []
+            self.amortizationPlans = []
             self.provisions = []
             self.categoryQuotas = []
             saveToDisk()
@@ -281,6 +365,7 @@ public final class FinancialDataStore: ObservableObject {
             investments: investments,
             debts: debts,
             contracts: contracts,
+            amortizationPlans: amortizationPlans,
             provisions: provisions,
             categoryQuotas: categoryQuotas
         )
@@ -458,7 +543,10 @@ public final class FinancialDataStore: ObservableObject {
         linkedQuotaUnits: Int? = nil,
         linkedQuotaYearMonthKey: Int? = nil,
         transactionOrigin: TransactionOrigin? = nil,
-        linkedEntityID: UUID? = nil
+        linkedEntityID: UUID? = nil,
+        baseInstallmentRegisteredAmount: Double? = nil,
+        projectedInstallmentCorrectionAmount: Double? = nil,
+        confirmedRealInterestCorrectionAmount: Double? = nil
     ) -> FinancialTransaction {
         let effectiveAccountId: UUID = accounts.contains(where: { $0.id == accountId })
             ? accountId
@@ -489,16 +577,26 @@ public final class FinancialDataStore: ObservableObject {
             linkedQuotaUnits: linkedQuotaUnits,
             linkedQuotaYearMonthKey: linkedQuotaYearMonthKey,
             transactionOrigin: transactionOrigin,
-            linkedEntityID: linkedEntityID
+            linkedEntityID: linkedEntityID,
+            baseInstallmentRegisteredAmount: baseInstallmentRegisteredAmount,
+            projectedInstallmentCorrectionAmount: projectedInstallmentCorrectionAmount,
+            confirmedRealInterestCorrectionAmount: confirmedRealInterestCorrectionAmount
         )
         transactions.append(tx)
         sortTransactions()
+        invalidateDerivedCaches()
         saveToDisk()
         cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .upsert, entity: tx)
         return tx
     }
 
-    public func updateTransaction(_ tx: FinancialTransaction) {
+    public func isDateInFuture(_ date: Date, referenceNow: Date? = nil) -> Bool {
+        let now = referenceNow ?? effectiveCurrentDate
+        return calendar.startOfDay(for: date) > calendar.startOfDay(for: now)
+    }
+
+    public func updateTransaction(_ tx: FinancialTransaction, referenceNow: Date? = nil) {
+        let now = referenceNow ?? effectiveCurrentDate
         var validated = tx
         if !accounts.contains(where: { $0.id == validated.accountId }), let fallbackAcc = accounts.first {
             validated.accountId = fallbackAcc.id
@@ -508,20 +606,150 @@ public final class FinancialDataStore: ObservableObject {
         }
 
         if let idx = transactions.firstIndex(where: { $0.id == validated.id }) {
+            let originalBeforeEdit = transactions[idx]
+            let didUserChangeDate = !calendar.isDate(validated.date, inSameDayAs: originalBeforeEdit.date)
+            if didUserChangeDate {
+                if isDateInFuture(validated.date, referenceNow: now) && originalBeforeEdit.isPaid == validated.isPaid {
+                    validated.isPaid = false
+                }
+            } else if validated.isPaid && !originalBeforeEdit.isPaid && isDateInFuture(validated.date, referenceNow: now) {
+                validated.date = now
+            }
             transactions[idx] = validated
             sortTransactions()
+            invalidateDerivedCaches()
             saveToDisk()
             cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: validated.id, operation: .upsert, entity: validated)
         }
     }
 
-    public func toggleTransactionPaid(transactionId: UUID) {
-        if let idx = transactions.firstIndex(where: { $0.id == transactionId }) {
-            transactions[idx].isPaid.toggle()
-            let updated = transactions[idx]
-            saveToDisk()
-            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: updated.id, operation: .upsert, entity: updated)
+    @discardableResult
+    public func toggleTransactionPaid(transactionId: UUID, referenceNow: Date? = nil) -> Bool {
+        let now = referenceNow ?? effectiveCurrentDate
+        guard let idx = transactions.firstIndex(where: { $0.id == transactionId }) else { return false }
+        if transactions[idx].transactionOrigin == .plannedAmortization && !transactions[idx].isPaid {
+            let payDate = isDateInFuture(transactions[idx].date, referenceNow: now)
+                ? now
+                : transactions[idx].date
+            return confirmPlannedAmortizationByTransactionId(transactionId, paymentDate: payDate)
         }
+        if !transactions[idx].isPaid {
+            if isDateInFuture(transactions[idx].date, referenceNow: now) {
+                transactions[idx].date = now
+            }
+            if let baseReg = transactions[idx].baseInstallmentRegisteredAmount,
+               transactions[idx].confirmedRealInterestCorrectionAmount == nil {
+                transactions[idx].confirmedRealInterestCorrectionAmount = ((transactions[idx].amount - baseReg) * 100.0).rounded() / 100.0
+            }
+            transactions[idx].isPaid = true
+        } else {
+            transactions[idx].isPaid = false
+            transactions[idx].confirmedRealInterestCorrectionAmount = nil
+            if let baseReg = transactions[idx].baseInstallmentRegisteredAmount {
+                let projCorr = transactions[idx].projectedInstallmentCorrectionAmount ?? 0.0
+                transactions[idx].amount = ((baseReg + projCorr) * 100.0).rounded() / 100.0
+            }
+        }
+        let updated = transactions[idx]
+        sortTransactions()
+        invalidateDerivedCaches()
+        saveToDisk()
+        cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: updated.id, operation: .upsert, entity: updated)
+        return true
+    }
+
+    @discardableResult
+    public func confirmContractInstallmentPayment(
+        transactionId: UUID,
+        realPaidAmount: Double,
+        paymentDate: Date? = nil,
+        referenceNow: Date? = nil
+    ) -> Bool {
+        let now = referenceNow ?? effectiveCurrentDate
+        guard let idx = transactions.firstIndex(where: { $0.id == transactionId }) else { return false }
+        let cleanPaid = abs(realPaidAmount)
+        guard cleanPaid > 0 else { return false }
+
+        let contract = transactions[idx].linkedContractId.flatMap { cid in
+            contracts.first(where: { $0.id == cid })
+        }
+        let baseReg = transactions[idx].baseInstallmentRegisteredAmount
+            ?? contract?.installmentAmount
+            ?? transactions[idx].amount
+        let projCorr = transactions[idx].projectedInstallmentCorrectionAmount ?? max(0.0, transactions[idx].amount - baseReg)
+        let realCorrection = ((cleanPaid - baseReg) * 100.0).rounded() / 100.0
+
+        let effectivePayDate: Date = {
+            if let explicitDate = paymentDate {
+                return explicitDate
+            }
+            return isDateInFuture(transactions[idx].date, referenceNow: now) ? now : transactions[idx].date
+        }()
+
+        transactions[idx].baseInstallmentRegisteredAmount = baseReg
+        transactions[idx].projectedInstallmentCorrectionAmount = projCorr
+        transactions[idx].confirmedRealInterestCorrectionAmount = realCorrection
+        transactions[idx].amount = cleanPaid
+        transactions[idx].date = effectivePayDate
+        transactions[idx].isPaid = true
+
+        let corrSign = realCorrection >= 0 ? "+" : ""
+        if let contract {
+            transactions[idx].details = "\(contract.kind.title) (\(contract.subtypeDisplayName)) • Valor cadastrado: \(AppFormatters.currency(baseReg)) • Juros/Correção efetivada no pagamento: \(corrSign)\(AppFormatters.currency(realCorrection)) (Projeção era +\(AppFormatters.currency(projCorr)))"
+        }
+
+        sortTransactions()
+        invalidateDerivedCaches()
+        saveToDisk()
+        cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: transactionId, operation: .upsert, entity: transactions[idx])
+        return true
+    }
+
+    public func installmentCorrectionBreakdown(for tx: FinancialTransaction) -> InstallmentCorrectionBreakdown? {
+        guard let contractId = tx.linkedContractId,
+              tx.installmentIndex != nil,
+              let contract = contracts.first(where: { $0.id == contractId }),
+              contract.kind == .financing else {
+            return nil
+        }
+
+        let avgGrowth = contract.averageMonthlyInstallmentGrowth ?? {
+            if contract.contractNumber == "178770203328-1" || contract.name.localizedCaseInsensitiveContains("CAIXA") {
+                return (2658.06 - 2613.19) / 11.0
+            }
+            return 0.0
+        }()
+        guard avgGrowth > 0.0001 || tx.projectedInstallmentCorrectionAmount != nil || tx.baseInstallmentRegisteredAmount != nil else {
+            return nil
+        }
+
+        let step = max(1, (tx.installmentIndex ?? (contract.pastInstallmentsElapsedAtCreation + 1)) - contract.pastInstallmentsElapsedAtCreation)
+        let baseReg = tx.baseInstallmentRegisteredAmount ?? contract.installmentAmount
+        let projectedCorr: Double = {
+            if let explicitProj = tx.projectedInstallmentCorrectionAmount, explicitProj > 0 {
+                return explicitProj
+            }
+            if avgGrowth > 0.0001 {
+                let dec = LoanProjectionEngine.roundCurrency(Decimal(step) * LoanProjectionEngine.toDecimal(avgGrowth))
+                return LoanProjectionEngine.toDouble(dec)
+            }
+            return max(0.0, tx.amount - baseReg)
+        }()
+
+        let confirmedReal: Double? = tx.isPaid
+            ? (tx.confirmedRealInterestCorrectionAmount ?? (((tx.amount - baseReg) * 100.0).rounded() / 100.0))
+            : nil
+
+        let effectiveTotal = tx.isPaid ? tx.amount : effectiveTransactionAmount(for: tx)
+
+        return InstallmentCorrectionBreakdown(
+            baseRegisteredAmount: baseReg,
+            projectedCorrectionAmount: projectedCorr,
+            confirmedRealCorrectionAmount: confirmedReal,
+            effectiveTotalAmount: effectiveTotal,
+            averageMonthlyGrowth: avgGrowth,
+            futureMonthStep: step
+        )
     }
 
     public func deleteTransaction(_ transactionId: UUID) {
@@ -529,6 +757,7 @@ public final class FinancialDataStore: ObservableObject {
         revertLinkedEntities(for: targetTx)
         transactions.removeAll { $0.id == transactionId }
         sortTransactions()
+        invalidateDerivedCaches()
         saveToDisk()
         cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: transactionId, operation: .delete)
     }
@@ -575,6 +804,19 @@ public final class FinancialDataStore: ObservableObject {
             if let cId = entityId ?? tx.linkedContractId,
                let idx = contracts.firstIndex(where: { $0.id == cId }) {
                 revertContractAmortizationOrSettlement(contractIndex: idx, tx: tx)
+            }
+
+        case .plannedAmortization:
+            for pIdx in amortizationPlans.indices {
+                let beforeCount = amortizationPlans[pIdx].items.count
+                amortizationPlans[pIdx].items.removeAll { item in
+                    item.linkedTransactionId == tx.id || item.id == tx.linkedEntityID
+                }
+                if amortizationPlans[pIdx].items.count != beforeCount {
+                    amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+                    let updatedPlan = amortizationPlans[pIdx]
+                    cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: updatedPlan.id, operation: .upsert, entity: updatedPlan)
+                }
             }
 
         case .standard, .quotaAllocation, .internalTransfer:
@@ -1380,12 +1622,172 @@ public final class FinancialDataStore: ObservableObject {
         }
 
         var elapsed = 0
-        while cursorDate < todayStart && elapsed < totalInstallments {
+        while cursorDate <= todayStart && elapsed < totalInstallments {
             elapsed += 1
             cursorDate = calendar.date(byAdding: .month, value: 1, to: cursorDate) ?? cursorDate
         }
 
         return (min(elapsed, totalInstallments), cursorDate)
+    }
+
+    private func migrateExistingSantanderContractsIfNeeded() -> Bool {
+        var didMutate = false
+        let sampleDoc = ContractDocumentImportService.parseContractDocumentText(
+            SampleContractDocumentsData.santanderLoanOCRText,
+            expectedKind: .loan
+        )
+        let todayStart = calendar.startOfDay(for: effectiveCurrentDate)
+
+        for cIdx in contracts.indices {
+            var contract = contracts[cIdx]
+            guard contract.kind == .loan,
+                  !contract.isSettled,
+                  (contract.contractNumber == "783694303" || contract.name.localizedCaseInsensitiveContains("Santander")) else {
+                continue
+            }
+
+            if contract.scheduledInstallments == nil || contract.scheduledInstallments?.isEmpty == true {
+                contract.scheduledInstallments = sampleDoc.scheduledInstallments
+                didMutate = true
+            }
+
+            guard let schedule = contract.scheduledInstallments, !schedule.isEmpty else { continue }
+            let scheduleByNumber = Dictionary(uniqueKeysWithValues: schedule.map { ($0.installmentNumber, $0) })
+
+            let clampedBillingDay = min(max(contract.billingDay, 1), 28)
+            var newlyElapsedFromSalary = 0
+            var txIdsToRemoveAsAlreadyDeducted: Set<UUID> = []
+
+            for tIdx in transactions.indices {
+                guard transactions[tIdx].linkedContractId == contract.id,
+                      let instNum = transactions[tIdx].installmentIndex else {
+                    continue
+                }
+                if let schedItem = scheduleByNumber[instNum],
+                   abs(transactions[tIdx].amount - schedItem.amount) > 0.005 {
+                    transactions[tIdx].amount = schedItem.amount
+                    didMutate = true
+                }
+
+                if !transactions[tIdx].isPaid {
+                    var comps = calendar.dateComponents([.year, .month], from: transactions[tIdx].date)
+                    comps.day = clampedBillingDay
+                    let salaryDeductionDate = calendar.date(from: comps) ?? transactions[tIdx].date
+                    if calendar.startOfDay(for: salaryDeductionDate) <= todayStart && contract.amortizationHistory.isEmpty {
+                        txIdsToRemoveAsAlreadyDeducted.insert(transactions[tIdx].id)
+                        newlyElapsedFromSalary = max(newlyElapsedFromSalary, instNum)
+                    }
+                }
+            }
+
+            if !txIdsToRemoveAsAlreadyDeducted.isEmpty {
+                transactions.removeAll { txIdsToRemoveAsAlreadyDeducted.contains($0.id) }
+                if newlyElapsedFromSalary > contract.pastInstallmentsElapsedAtCreation {
+                    contract.pastInstallmentsElapsedAtCreation = newlyElapsedFromSalary
+                }
+                didMutate = true
+            }
+
+            if contract.amortizationHistory.isEmpty {
+                let remainingUnpaid = transactions
+                    .filter { $0.linkedContractId == contract.id && $0.installmentIndex != nil && !$0.isPaid }
+                    .sorted { ($0.installmentIndex ?? 0) < ($1.installmentIndex ?? 0) }
+                if !remainingUnpaid.isEmpty {
+                    let remainingSum = (remainingUnpaid.reduce(0.0) { $0 + $1.amount } * 100.0).rounded() / 100.0
+                    if abs((contract.outstandingBalance ?? 0.0) - remainingSum) > 0.005 {
+                        contract.outstandingBalance = remainingSum
+                        contract.loanDetails?.balance = remainingSum
+                        didMutate = true
+                    }
+                    if let firstNextAmt = remainingUnpaid.first?.amount,
+                       abs(contract.installmentAmount - firstNextAmt) > 0.005 {
+                        contract.installmentAmount = firstNextAmt
+                        contract.loanDetails?.installmentValue = firstNextAmt
+                        didMutate = true
+                    }
+                }
+            }
+
+            contracts[cIdx] = contract
+        }
+
+        if didMutate {
+            sortTransactions()
+        }
+        return didMutate
+    }
+
+    private func migrateExistingCaixaContractsIfNeeded() -> Bool {
+        var didMutate = false
+        let sampleCaixaDoc = ContractDocumentImportService.parseContractDocumentText(
+            SampleContractDocumentsData.caixaFinancingOCRText,
+            expectedKind: .financing
+        )
+        let baseRegisteredAmount = sampleCaixaDoc.installmentAmount
+        let avgGrowthDouble = sampleCaixaDoc.averageMonthlyInstallmentGrowth ?? ((2658.06 - 2613.19) / 11.0)
+        let avgGrowthDec = LoanProjectionEngine.toDecimal(avgGrowthDouble)
+        let baseRegisteredDec = LoanProjectionEngine.toDecimal(baseRegisteredAmount)
+
+        for cIdx in contracts.indices {
+            var contract = contracts[cIdx]
+            guard contract.kind == .financing,
+                  !contract.isSettled,
+                  (contract.contractNumber == "178770203328-1" || contract.name.localizedCaseInsensitiveContains("CAIXA")) else {
+                continue
+            }
+
+            if contract.scheduledInstallments == nil || contract.scheduledInstallments?.isEmpty == true {
+                contract.scheduledInstallments = sampleCaixaDoc.scheduledInstallments
+                didMutate = true
+            }
+            if contract.averageMonthlyInstallmentGrowth == nil || abs((contract.averageMonthlyInstallmentGrowth ?? 0) - avgGrowthDouble) > 0.0001 {
+                contract.averageMonthlyInstallmentGrowth = avgGrowthDouble
+                didMutate = true
+            }
+            if contract.amortizationHistory.isEmpty && abs(contract.installmentAmount - baseRegisteredAmount) > 0.005 {
+                contract.installmentAmount = baseRegisteredAmount
+                contract.financingDetails?.totalInstallmentAmount = baseRegisteredAmount
+                didMutate = true
+            }
+
+            let unpaidIndices = transactions.indices
+                .filter { idx in
+                    transactions[idx].linkedContractId == contract.id &&
+                    transactions[idx].installmentIndex != nil &&
+                    !transactions[idx].isPaid
+                }
+                .sorted { a, b in
+                    let instA = transactions[a].installmentIndex ?? 0
+                    let instB = transactions[b].installmentIndex ?? 0
+                    if instA != instB { return instA < instB }
+                    return transactions[a].date < transactions[b].date
+                }
+
+            for (offset, tIdx) in unpaidIndices.enumerated() {
+                let step = offset + 1
+                let projCorrectionDec = LoanProjectionEngine.roundCurrency(Decimal(step) * avgGrowthDec)
+                let projTotalDec = LoanProjectionEngine.roundCurrency(baseRegisteredDec + projCorrectionDec)
+                let projCorrectionDouble = LoanProjectionEngine.toDouble(projCorrectionDec)
+                let projTotalDouble = LoanProjectionEngine.toDouble(projTotalDec)
+
+                if abs(transactions[tIdx].amount - projTotalDouble) > 0.005 ||
+                   transactions[tIdx].baseInstallmentRegisteredAmount == nil ||
+                   transactions[tIdx].projectedInstallmentCorrectionAmount == nil {
+                    transactions[tIdx].baseInstallmentRegisteredAmount = baseRegisteredAmount
+                    transactions[tIdx].projectedInstallmentCorrectionAmount = projCorrectionDouble
+                    transactions[tIdx].amount = projTotalDouble
+                    transactions[tIdx].details = "\(contract.kind.title) (\(contract.subtypeDisplayName)) • Valor cadastrado: \(AppFormatters.currency(baseRegisteredAmount)) • Projeção de correção (+\(step)m): +\(AppFormatters.currency(projCorrectionDouble)) (Média doc: +\(AppFormatters.currency(avgGrowthDouble))/mês)"
+                    didMutate = true
+                }
+            }
+
+            contracts[cIdx] = contract
+        }
+
+        if didMutate {
+            sortTransactions()
+        }
+        return didMutate
     }
 
     @discardableResult
@@ -1414,7 +1816,14 @@ public final class FinancialDataStore: ObservableObject {
         indexationRate: FinancingIndexation? = nil,
         adminFee: Double? = nil,
         insuranceFee: Double? = nil,
-        baseInstallmentAmount: Double? = nil
+        baseInstallmentAmount: Double? = nil,
+        bankDueDay: Int? = nil,
+        documentReferenceDate: Date? = nil,
+        maturityDate: Date? = nil,
+        estimatedMonthlyTR: Double? = nil,
+        lastFGTSUsageDate: Date? = nil,
+        scheduledInstallments: [ContractInstallmentScheduleItem]? = nil,
+        averageMonthlyInstallmentGrowth: Double? = nil
     ) -> CreditContract {
         let creditCategoryId = categoryId ?? fallbackCategoryId(for: .expense, matchingSubstring: "Empréstimos")
 
@@ -1424,10 +1833,57 @@ public final class FinancialDataStore: ObservableObject {
             totalInstallments: totalInstallments,
             referenceDate: referenceDate
         )
-        let pastCount = min(max(overridePastInstallmentsCount ?? computedSchedule.pastInstallmentsCount, 0), totalInstallments)
-        let firstFutureDate = overrideFirstFutureBillingDate ?? computedSchedule.firstFutureBillingDate
+        let clampedBillingDay = min(max(billingDay, 1), 28)
+        let effectiveCutoff = calendar.startOfDay(for: max(referenceDate, documentReferenceDate ?? referenceDate))
+
+        var pastCount = min(max(overridePastInstallmentsCount ?? computedSchedule.pastInstallmentsCount, 0), totalInstallments)
+        let rawFirstFutureDate = overrideFirstFutureBillingDate ?? computedSchedule.firstFutureBillingDate
+        var firstComps = calendar.dateComponents([.year, .month], from: rawFirstFutureDate)
+        firstComps.day = clampedBillingDay
+        var firstFutureDate = calendar.date(from: firstComps) ?? rawFirstFutureDate
+
+        if let schedule = scheduledInstallments, !schedule.isEmpty {
+            let sortedSchedule = schedule.sorted { $0.installmentNumber < $1.installmentNumber }
+            let futureSchedule = sortedSchedule.filter { item in
+                guard item.installmentNumber > pastCount else { return false }
+                var comps = calendar.dateComponents([.year, .month], from: item.bankDueDate)
+                comps.day = clampedBillingDay
+                let salaryDate = calendar.date(from: comps) ?? item.bankDueDate
+                return calendar.startOfDay(for: salaryDate) > effectiveCutoff
+            }
+            let adjustedPastCount = min(totalInstallments, max(pastCount, totalInstallments - futureSchedule.count))
+            pastCount = adjustedPastCount
+            if let firstFutureItem = futureSchedule.first {
+                var comps = calendar.dateComponents([.year, .month], from: firstFutureItem.bankDueDate)
+                comps.day = clampedBillingDay
+                firstFutureDate = calendar.date(from: comps) ?? firstFutureDate
+            } else {
+                while calendar.startOfDay(for: firstFutureDate) <= effectiveCutoff {
+                    firstFutureDate = calendar.date(byAdding: .month, value: 1, to: firstFutureDate) ?? firstFutureDate
+                }
+            }
+        } else if (startDate != nil && calendar.startOfDay(for: startDate!) < effectiveCutoff) || overrideFirstFutureBillingDate != nil {
+            while calendar.startOfDay(for: firstFutureDate) <= effectiveCutoff && pastCount < totalInstallments {
+                pastCount += 1
+                firstFutureDate = calendar.date(byAdding: .month, value: 1, to: firstFutureDate) ?? firstFutureDate
+            }
+        }
+
+        let futureScheduledItems: [ContractInstallmentScheduleItem] = (scheduledInstallments ?? [])
+            .filter { $0.installmentNumber > pastCount }
+            .sorted { $0.installmentNumber < $1.installmentNumber }
 
         let initialLoanBalance: Double? = {
+            if kind == .loan,
+               !futureScheduledItems.isEmpty,
+               let schedule = scheduledInstallments,
+               futureScheduledItems.count < schedule.count {
+                let remainingD0 = (futureScheduledItems.reduce(0.0) { $0 + $1.amount } * 100.0).rounded() / 100.0
+                if let explicit = outstandingBalance {
+                    return min(explicit, remainingD0)
+                }
+                return remainingD0
+            }
             if let explicit = outstandingBalance { return explicit }
             guard kind == .loan else { return nil }
             if pastCount > 0 {
@@ -1435,6 +1891,25 @@ public final class FinancialDataStore: ObservableObject {
                 return LoanModel.calculatePresentValue(installment: installmentAmount, monthlyRate: monthlyInterestRate, remaining: remaining)
             }
             return totalContractedAmount
+        }()
+
+        let effectiveNextInstallmentAmount = (kind == .loan)
+            ? (futureScheduledItems.first?.amount ?? installmentAmount)
+            : installmentAmount
+
+        let resolvedAvgGrowth: Double? = {
+            if let explicitGrowth = averageMonthlyInstallmentGrowth, explicitGrowth > 0 {
+                return explicitGrowth
+            }
+            if kind == .financing, futureScheduledItems.count >= 2 {
+                let firstAmt = futureScheduledItems[0].amount
+                let lastAmt = futureScheduledItems[futureScheduledItems.count - 1].amount
+                let steps = Double(futureScheduledItems.count - 1)
+                if lastAmt > firstAmt && steps > 0 {
+                    return (lastAmt - firstAmt) / steps
+                }
+            }
+            return nil
         }()
 
         let contract = CreditContract(
@@ -1446,7 +1921,7 @@ public final class FinancialDataStore: ObservableObject {
             amortizationSystem: amortizationSystem,
             totalContractedAmount: totalContractedAmount,
             outstandingBalance: initialLoanBalance,
-            installmentAmount: installmentAmount,
+            installmentAmount: effectiveNextInstallmentAmount,
             billingDay: billingDay,
             totalInstallments: totalInstallments,
             originalTotalInstallments: originalTotalInstallments ?? totalInstallments,
@@ -1460,18 +1935,61 @@ public final class FinancialDataStore: ObservableObject {
             indexationRate: indexationRate,
             adminFee: adminFee,
             insuranceFee: insuranceFee,
-            baseInstallmentAmount: baseInstallmentAmount
+            baseInstallmentAmount: baseInstallmentAmount,
+            bankDueDay: bankDueDay ?? billingDay,
+            referenceDate: documentReferenceDate ?? referenceDate,
+            maturityDate: maturityDate,
+            estimatedMonthlyTR: estimatedMonthlyTR,
+            lastFGTSUsageDate: lastFGTSUsageDate,
+            scheduledInstallments: scheduledInstallments,
+            averageMonthlyInstallmentGrowth: resolvedAvgGrowth
         )
         contracts.append(contract)
 
+        let scheduleByNumber: [Int: ContractInstallmentScheduleItem] = Dictionary(
+            uniqueKeysWithValues: (scheduledInstallments ?? []).map { ($0.installmentNumber, $0) }
+        )
+        let avgGrowthDec = LoanProjectionEngine.toDecimal(resolvedAvgGrowth ?? 0.0)
+        let baseRegisteredDec = LoanProjectionEngine.toDecimal(installmentAmount)
+
         let remainingToCreate = max(totalInstallments - pastCount, 0)
+        var createdTransactions: [FinancialTransaction] = []
         for offset in 0..<remainingToCreate {
-            let installmentNumber = pastCount + offset + 1
+            let step = offset + 1
+            let installmentNumber = pastCount + step
             let dueDate = calendar.date(byAdding: .month, value: offset, to: firstFutureDate) ?? firstFutureDate
+            let schedItem = scheduleByNumber[installmentNumber]
+
+            let individualInstallmentAmount: Double
+            let txBaseRegisteredAmount: Double?
+            let txProjectedCorrectionAmount: Double?
+            let extraBreakdownNote: String
+
+            if kind == .financing && avgGrowthDec > .zero {
+                let projCorrDec = LoanProjectionEngine.roundCurrency(Decimal(step) * avgGrowthDec)
+                let projTotalDec = LoanProjectionEngine.roundCurrency(baseRegisteredDec + projCorrDec)
+                let projCorrDouble = LoanProjectionEngine.toDouble(projCorrDec)
+                let projTotalDouble = LoanProjectionEngine.toDouble(projTotalDec)
+
+                individualInstallmentAmount = projTotalDouble
+                txBaseRegisteredAmount = installmentAmount
+                txProjectedCorrectionAmount = projCorrDouble
+                extraBreakdownNote = " • Valor cadastrado: \(AppFormatters.currency(installmentAmount)) • Projeção de correção (+\(step)m): +\(AppFormatters.currency(projCorrDouble)) (Média doc: +\(AppFormatters.currency(resolvedAvgGrowth ?? 0.0))/mês)"
+            } else {
+                individualInstallmentAmount = schedItem?.amount ?? installmentAmount
+                txBaseRegisteredAmount = nil
+                txProjectedCorrectionAmount = nil
+                if let p = schedItem?.principalAmount, let j = schedItem?.interestAmount {
+                    extraBreakdownNote = " • Amortização: \(AppFormatters.currency(p)) • Juros: \(AppFormatters.currency(j))"
+                } else {
+                    extraBreakdownNote = ""
+                }
+            }
+
             let tx = FinancialTransaction(
                 name: "\(name) - Parcela \(installmentNumber)/\(totalInstallments)",
-                details: "\(contract.kind.title) (\(contract.subtypeDisplayName)) • Juros \(String(format: "%.2f", monthlyInterestRate))% a.m.",
-                amount: installmentAmount,
+                details: "\(contract.kind.title) (\(contract.subtypeDisplayName)) • Juros \(String(format: "%.2f", monthlyInterestRate))% a.m.\(extraBreakdownNote)",
+                amount: individualInstallmentAmount,
                 date: dueDate,
                 type: .expense,
                 isPaid: false,
@@ -1484,14 +2002,21 @@ public final class FinancialDataStore: ObservableObject {
                 installmentTotal: totalInstallments,
                 linkedContractId: contract.id,
                 transactionOrigin: .standard,
-                linkedEntityID: contract.id
+                linkedEntityID: contract.id,
+                baseInstallmentRegisteredAmount: txBaseRegisteredAmount,
+                projectedInstallmentCorrectionAmount: txProjectedCorrectionAmount
             )
             transactions.append(tx)
+            createdTransactions.append(tx)
         }
 
         sortTransactions()
+        invalidateDerivedCaches()
         saveToDisk()
         cloudSyncService?.recordLocalMutation(entityName: "credit_contracts", entityId: contract.id, operation: .upsert, entity: contract)
+        for tx in createdTransactions {
+            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .upsert, entity: tx)
+        }
         return contract
     }
 
@@ -1535,9 +2060,19 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func deleteContract(_ contractId: UUID) {
+        let deletedTxs = transactions.filter { $0.linkedContractId == contractId || $0.seriesGroupId == contractId }
+        let deletedPlans = amortizationPlans.filter { $0.contractId == contractId }
         transactions.removeAll { $0.linkedContractId == contractId || $0.seriesGroupId == contractId }
+        amortizationPlans.removeAll { $0.contractId == contractId }
         contracts.removeAll { $0.id == contractId }
+        invalidateDerivedCaches()
         saveToDisk()
+        for plan in deletedPlans {
+            cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: plan.id, operation: .delete)
+        }
+        for tx in deletedTxs {
+            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .delete)
+        }
         cloudSyncService?.recordLocalMutation(entityName: "credit_contracts", entityId: contractId, operation: .delete)
     }
 
@@ -1664,25 +2199,31 @@ public final class FinancialDataStore: ObservableObject {
             let initialBalance = contract.loanDetails?.balance ?? contract.outstandingBalance ?? contract.totalContractedAmount
             guard initialBalance > 0 else { return 0.0 }
 
-            let monthlyRate = contract.monthlyInterestRate
-            let pmt = contract.installmentAmount
-
-            let elapsedInApp: Int
+            let elapsedTransactions: [FinancialTransaction]
             if let asOfCutoff {
-                elapsedInApp = transactions.filter { tx in
+                elapsedTransactions = transactions.filter { tx in
                     tx.linkedContractId == contract.id &&
                     tx.installmentIndex != nil &&
                     (lastAmortDate == nil || tx.date > lastAmortDate!) &&
                     (tx.isPaid || tx.date <= asOfCutoff)
-                }.count
+                }
             } else {
-                elapsedInApp = transactions.filter { tx in
+                elapsedTransactions = transactions.filter { tx in
                     tx.linkedContractId == contract.id &&
                     tx.installmentIndex != nil &&
                     (lastAmortDate == nil || tx.date > lastAmortDate!) &&
                     tx.isPaid
-                }.count
+                }
             }
+
+            if let schedule = contract.scheduledInstallments, !schedule.isEmpty {
+                let paidD0Sum = elapsedTransactions.reduce(0.0) { $0 + $1.amount }
+                return max(0.0, ((initialBalance - paidD0Sum) * 100.0).rounded() / 100.0)
+            }
+
+            let monthlyRate = contract.monthlyInterestRate
+            let pmt = contract.installmentAmount
+            let elapsedInApp = elapsedTransactions.count
 
             var runningBalance = initialBalance
             if elapsedInApp > 0 {
@@ -2095,9 +2636,805 @@ public final class FinancialDataStore: ObservableObject {
         contracts[idx] = contract
 
         sortTransactions()
+        invalidateDerivedCaches()
         saveToDisk()
         cloudSyncService?.recordLocalMutation(entityName: "credit_contracts", entityId: contract.id, operation: .upsert, entity: contract)
         cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: settleTx.id, operation: .upsert, entity: settleTx)
+    }
+
+    // MARK: - Planejamento Dinâmico de Amortização (Camada 2 — Intenção & Camada 3 — Projeção em Memória)
+
+    public func amortizationPlan(for contractId: UUID) -> AmortizationPlan? {
+        amortizationPlans.first { $0.contractId == contractId }
+    }
+
+    public func expiredPlannedAmortizations(for contractId: UUID) -> [PlannedAmortization] {
+        guard let plan = amortizationPlan(for: contractId) else { return [] }
+        return plan.items
+            .filter { $0.status == .expired }
+            .sorted { $0.date < $1.date }
+    }
+
+    public var allExpiredPlannedAmortizations: [(contract: CreditContract, item: PlannedAmortization)] {
+        var result: [(contract: CreditContract, item: PlannedAmortization)] = []
+        for contract in contracts where !contract.isSettled {
+            for item in expiredPlannedAmortizations(for: contract.id) {
+                result.append((contract: contract, item: item))
+            }
+        }
+        return result
+    }
+
+    public var hasAnyAmortizationPlan: Bool {
+        amortizationPlans.contains { plan in
+            plan.items.contains { $0.status == .pending || $0.status == .expired }
+        }
+    }
+
+    public func validateExpiredAmortizationPlans(referenceNow: Date? = nil) {
+        let now = referenceNow ?? effectiveCurrentDate
+        let newlyExpired = PlanExpirationValidator.validateAndExpireOverdueItems(
+            plans: &amortizationPlans,
+            referenceNow: now,
+            calendar: calendar
+        )
+        if !newlyExpired.isEmpty {
+            for contract in contracts {
+                syncPlannedAmortizationTransactions(for: contract.id, saveAfter: false)
+            }
+            saveToDisk()
+        }
+    }
+
+    public func hasSavedAmortizationPlan(for contractId: UUID) -> Bool {
+        guard let plan = amortizationPlan(for: contractId) else { return false }
+        return plan.items.contains { $0.status == .pending || $0.status == .expired }
+    }
+
+    public func loanProjection(for contractId: UUID) -> LoanProjectionResult? {
+        if let cached = cachedLoanProjections[contractId] {
+            return cached
+        }
+        guard let contract = contracts.first(where: { $0.id == contractId }), !contract.isSettled else {
+            return nil
+        }
+        let unpaidInstallments = transactions.filter {
+            $0.linkedContractId == contractId &&
+            $0.installmentIndex != nil &&
+            !$0.isPaid
+        }
+        let currentRealBal = currentOutstandingBalance(for: contract)
+        let plan = amortizationPlan(for: contractId)
+        let result = LoanProjectionEngine.simulate(
+            contract: contract,
+            unpaidInstallmentTransactions: unpaidInstallments,
+            currentRealBalanceDouble: currentRealBal,
+            plan: plan,
+            calendar: calendar
+        )
+        cachedLoanProjections[contractId] = result
+        return result
+    }
+
+    public func simulateAmortizationPlanPreview(
+        for contractId: UUID,
+        draftPlan: AmortizationPlan?
+    ) -> LoanProjectionResult? {
+        guard let contract = contracts.first(where: { $0.id == contractId }), !contract.isSettled else {
+            return nil
+        }
+        let unpaidInstallments = transactions.filter {
+            $0.linkedContractId == contractId &&
+            $0.installmentIndex != nil &&
+            !$0.isPaid
+        }
+        let currentRealBal = currentOutstandingBalance(for: contract)
+        return LoanProjectionEngine.simulate(
+            contract: contract,
+            unpaidInstallmentTransactions: unpaidInstallments,
+            currentRealBalanceDouble: currentRealBal,
+            plan: draftPlan,
+            calendar: calendar
+        )
+    }
+
+    public func maxAvailableLoanBalanceToAmortize(
+        for contractId: UUID,
+        draftItems: [PlannedAmortization],
+        onDate: Date,
+        excludingItemId: UUID? = nil,
+        estimatedMonthlyTR: Decimal = .zero
+    ) -> Double {
+        guard let contract = contracts.first(where: { $0.id == contractId }), !contract.isSettled else {
+            return 0.0
+        }
+        let unpaidInstallments = transactions.filter {
+            $0.linkedContractId == contractId &&
+            $0.installmentIndex != nil &&
+            !$0.isPaid
+        }
+        let currentRealBal = currentOutstandingBalance(for: contract)
+        let maxDec = LoanProjectionEngine.maxAvailableLoanBalanceToAmortize(
+            contract: contract,
+            unpaidInstallmentTransactions: unpaidInstallments,
+            currentRealBalanceDouble: currentRealBal,
+            existingItems: draftItems,
+            onDate: onDate,
+            excludingItemId: excludingItemId,
+            estimatedMonthlyTR: estimatedMonthlyTR,
+            calendar: calendar
+        )
+        return LoanProjectionEngine.toDouble(maxDec)
+    }
+
+    public func expectedMonthEndCashBalance(
+        for monthDate: Date,
+        contractId: UUID,
+        draftPlan: AmortizationPlan?,
+        draftProjection: LoanProjectionResult?,
+        additionalTypingOutflow: Double = 0.0
+    ) -> Double {
+        let cutoff = endOfMonth(for: monthDate)
+        let isClosed = isMonthPriorToCurrent(monthDate)
+        let initialAccountsSum = accounts.reduce(0.0) { $0 + $1.initialBalance }
+        let consolidatedInvestmentsSum = investments
+            .filter(\.showInConsolidated)
+            .reduce(0.0) { $0 + $1.balance }
+
+        let shadowedByDraft = draftProjection?.shadowedInstallmentTransactionIds ?? []
+        let projectedAmountsByDraft = draftProjection?.activeInstallmentProjectedAmounts ?? [:]
+
+        var transactionsDelta = 0.0
+        for tx in transactions {
+            guard !tx.ignoreInConsolidated else { continue }
+            guard tx.date <= cutoff else { continue }
+            if isClosed && !tx.isPaid { continue }
+
+            if tx.linkedContractId == contractId && tx.transactionOrigin == .plannedAmortization {
+                continue
+            }
+
+            if tx.linkedContractId == contractId && tx.installmentIndex != nil && !tx.isPaid {
+                if shadowedByDraft.contains(tx.id) {
+                    continue
+                }
+                if let draftAmtDec = projectedAmountsByDraft[tx.id] {
+                    let amt = LoanProjectionEngine.toDouble(draftAmtDec)
+                    transactionsDelta += (tx.type == .income ? amt : -amt)
+                    continue
+                }
+            }
+
+            transactionsDelta += effectiveSignedTransactionAmount(for: tx)
+        }
+
+        var draftAmortizationsOutflow = 0.0
+        if let draftPlan {
+            for item in draftPlan.items where item.status == .pending && item.date <= cutoff {
+                let effectiveDec = draftProjection?.plannedItemOutcomes[item.id]?.effectiveAmortization ?? item.amount
+                draftAmortizationsOutflow += LoanProjectionEngine.toDouble(effectiveDec)
+            }
+        }
+
+        let remainingProvisions = isClosed ? 0.0 : accumulatedRemainingProvisions(throughMonth: monthDate)
+        return initialAccountsSum + transactionsDelta + consolidatedInvestmentsSum - remainingProvisions - draftAmortizationsOutflow - max(0.0, additionalTypingOutflow)
+    }
+
+    @discardableResult
+    public func saveAmortizationPlan(
+        contractId: UUID,
+        generationMode: AmortizationPlanGenerationMode,
+        billingDay: Int,
+        incomeCommitmentPercentage: Decimal,
+        defaultRecalculationMode: AmortizationRecalculationMode,
+        estimatedMonthlyTR: Decimal,
+        draftItems: [PlannedAmortization]
+    ) -> AmortizationPlan? {
+        guard let contractIdx = contracts.firstIndex(where: { $0.id == contractId }),
+              !contracts[contractIdx].isSettled else {
+            return nil
+        }
+        contracts[contractIdx].estimatedMonthlyTR = LoanProjectionEngine.toDouble(estimatedMonthlyTR)
+        let contract = contracts[contractIdx]
+        let effectiveMode: AmortizationRecalculationMode = contract.kind == .loan ? .reduceTerm : defaultRecalculationMode
+
+        let unpaidInstallments = transactions.filter {
+            $0.linkedContractId == contractId &&
+            $0.installmentIndex != nil &&
+            !$0.isPaid
+        }
+        let currentRealBal = currentOutstandingBalance(for: contract)
+
+        let sanitizedItems = LoanProjectionEngine.clampAndSanitizePlannedItems(
+            draftItems,
+            contract: contract,
+            unpaidInstallmentTransactions: unpaidInstallments,
+            currentRealBalanceDouble: currentRealBal,
+            estimatedMonthlyTR: estimatedMonthlyTR,
+            calendar: calendar
+        )
+
+        let existingPlan = amortizationPlan(for: contractId)
+        let executedItems = existingPlan?.items.filter { $0.status == .executed } ?? []
+        let pendingOrExpired = sanitizedItems.filter { $0.status != .executed }
+        let mergedItems = (executedItems + pendingOrExpired).sorted { $0.date < $1.date }
+
+        let savedPlan = AmortizationPlan(
+            id: existingPlan?.id ?? UUID(),
+            contractId: contractId,
+            generationMode: generationMode,
+            billingDay: min(max(billingDay, 1), 31),
+            incomeCommitmentPercentage: min(max(incomeCommitmentPercentage, Decimal(1)), Decimal(100)),
+            defaultRecalculationMode: effectiveMode,
+            estimatedMonthlyTR: max(.zero, estimatedMonthlyTR),
+            items: mergedItems,
+            updatedAt: effectiveCurrentDate,
+            createdAt: existingPlan?.createdAt ?? effectiveCurrentDate
+        )
+
+        if let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }) {
+            amortizationPlans[pIdx] = savedPlan
+        } else {
+            amortizationPlans.append(savedPlan)
+        }
+
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: savedPlan.id, operation: .upsert, entity: savedPlan)
+        cloudSyncService?.recordLocalMutation(entityName: "credit_contracts", entityId: contract.id, operation: .upsert, entity: contract)
+        return savedPlan
+    }
+
+    public func activeProjectionSnapshot() -> (shadowedTxIds: Set<UUID>, projectedInstallmentAmounts: [UUID: Double]) {
+        guard budgetProjectionScenario == .withPlanning else {
+            return ([], [:])
+        }
+        if let cached = cachedActiveProjectionSnapshot {
+            return (cached.shadowedTxIds, cached.projectedInstallmentAmounts)
+        }
+        var shadowed: Set<UUID> = []
+        var projectedAmounts: [UUID: Double] = [:]
+        var payoffTxs: Set<UUID> = []
+
+        for contract in contracts where !contract.isSettled {
+            guard let plan = amortizationPlan(for: contract.id),
+                  plan.items.contains(where: { $0.status == .pending }) else {
+                continue
+            }
+            if let proj = loanProjection(for: contract.id) {
+                shadowed.formUnion(proj.shadowedInstallmentTransactionIds)
+                for (txId, decAmt) in proj.activeInstallmentProjectedAmounts {
+                    projectedAmounts[txId] = LoanProjectionEngine.toDouble(decAmt)
+                }
+                for item in plan.items where item.status == .pending {
+                    if let outcome = proj.plannedItemOutcomes[item.id],
+                       outcome.isFullPayoffStep || outcome.remainingBalanceAfter <= Decimal(string: "0.01")!,
+                       let linkedTxId = item.linkedTransactionId {
+                        payoffTxs.insert(linkedTxId)
+                    }
+                }
+            }
+        }
+        cachedActiveProjectionSnapshot = (shadowed, projectedAmounts, payoffTxs)
+        return (shadowed, projectedAmounts)
+    }
+
+    public func isPlannedAmortizationFullPayoff(_ tx: FinancialTransaction) -> Bool {
+        if tx.transactionOrigin == .plannedAmortization {
+            _ = activeProjectionSnapshot()
+            if let cached = cachedActiveProjectionSnapshot, cached.payoffTxIds.contains(tx.id) {
+                return true
+            }
+            if let contractId = tx.linkedContractId,
+               let proj = loanProjection(for: contractId),
+               let itemId = tx.linkedEntityID,
+               let outcome = proj.plannedItemOutcomes[itemId] {
+                return outcome.isFullPayoffStep || outcome.remainingBalanceAfter <= Decimal(string: "0.01")!
+            }
+            return tx.name.localizedCaseInsensitiveContains("Liquidação") ||
+                   tx.details.localizedCaseInsensitiveContains("Liquidação Total")
+        }
+
+        if budgetProjectionScenario == .withPlanning,
+           let contractId = tx.linkedContractId,
+           tx.installmentIndex != nil,
+           !tx.isPaid,
+           hasSavedAmortizationPlan(for: contractId),
+           let proj = loanProjection(for: contractId),
+           proj.monthsSaved > 0 {
+            if let row = proj.timeline.first(where: { $0.linkedTransactionId == tx.id }),
+               row.status == .active,
+               row.finalBalance <= Decimal(string: "0.01")! {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    public func transactionProjectionStatus(for tx: FinancialTransaction) -> ProjectedInstallmentStatus {
+        if tx.transactionOrigin == .plannedAmortization {
+            return .pendingAmortization
+        }
+        guard budgetProjectionScenario == .withPlanning,
+              tx.linkedContractId != nil,
+              tx.installmentIndex != nil,
+              !tx.isPaid else {
+            return .active
+        }
+        let snap = activeProjectionSnapshot()
+        return snap.shadowedTxIds.contains(tx.id) ? .shadowed : .active
+    }
+
+    public func isTransactionVisibleInCurrentScenario(_ tx: FinancialTransaction) -> Bool {
+        if tx.transactionOrigin == .plannedAmortization {
+            guard budgetProjectionScenario == .withPlanning else { return false }
+            for plan in amortizationPlans {
+                if let item = plan.items.first(where: { $0.id == tx.linkedEntityID || $0.linkedTransactionId == tx.id }) {
+                    return item.status == .pending
+                }
+            }
+            return false
+        }
+        return true
+    }
+
+    public func effectiveTransactionAmount(for tx: FinancialTransaction) -> Double {
+        if tx.transactionOrigin == .plannedAmortization {
+            guard budgetProjectionScenario == .withPlanning else { return 0.0 }
+            for plan in amortizationPlans {
+                if let item = plan.items.first(where: { $0.id == tx.linkedEntityID || $0.linkedTransactionId == tx.id }) {
+                    guard item.status == .pending else { return 0.0 }
+                    if let proj = loanProjection(for: plan.contractId),
+                       let outcome = proj.plannedItemOutcomes[item.id] {
+                        return LoanProjectionEngine.toDouble(outcome.effectiveAmortization)
+                    }
+                    return item.amountDouble
+                }
+            }
+            return 0.0
+        }
+
+        if budgetProjectionScenario == .withPlanning,
+           tx.linkedContractId != nil,
+           tx.installmentIndex != nil,
+           !tx.isPaid {
+            let snap = activeProjectionSnapshot()
+            if snap.shadowedTxIds.contains(tx.id) {
+                return 0.0
+            }
+            if let projAmt = snap.projectedInstallmentAmounts[tx.id] {
+                return projAmt
+            }
+        }
+
+        return tx.amount
+    }
+
+    public func effectiveSignedTransactionAmount(for tx: FinancialTransaction) -> Double {
+        let amt = effectiveTransactionAmount(for: tx)
+        return tx.type == .income ? amt : -amt
+    }
+
+    public func syncPlannedAmortizationTransactions(for contractId: UUID, saveAfter: Bool = true) {
+        guard let contract = contracts.first(where: { $0.id == contractId }) else {
+            transactions.removeAll { $0.linkedContractId == contractId && $0.transactionOrigin == .plannedAmortization }
+            if saveAfter { saveToDisk() }
+            return
+        }
+
+        guard let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }) else {
+            transactions.removeAll { $0.linkedContractId == contractId && $0.transactionOrigin == .plannedAmortization }
+            if saveAfter {
+                sortTransactions()
+                invalidateDerivedCaches()
+                saveToDisk()
+            }
+            return
+        }
+
+        let proj = loanProjection(for: contractId)
+        var validPlannedTxIds: Set<UUID> = []
+
+        for iIdx in amortizationPlans[pIdx].items.indices {
+            let item = amortizationPlans[pIdx].items[iIdx]
+            guard item.status == .pending else {
+                continue
+            }
+
+            let outcome = proj?.plannedItemOutcomes[item.id]
+            let effectiveAmtDecimal = outcome?.effectiveAmortization ?? item.amount
+            let effectiveAmtDouble = LoanProjectionEngine.toDouble(effectiveAmtDecimal)
+            guard effectiveAmtDouble > 0.001 else {
+                continue
+            }
+
+            let remainingBalDouble = LoanProjectionEngine.toDouble(outcome?.remainingBalanceAfter ?? .zero)
+            let isFullPayoffStep = (outcome?.isFullPayoffStep == true) || (outcome?.remainingBalanceAfter ?? Decimal(1)) <= Decimal(string: "0.01")!
+            let txId = item.linkedTransactionId ?? UUID()
+            amortizationPlans[pIdx].items[iIdx].linkedTransactionId = txId
+            validPlannedTxIds.insert(txId)
+
+            let txTitle: String
+            let txDetails: String
+            if isFullPayoffStep {
+                txTitle = "Amortização Planejada — Liquidação Total (\(item.source.shortTitle)): \(contract.name)"
+                txDetails = "Liquidação Total Planejada (Quitação do contrato) • Saldo devedor zerado: R$ 0,00 • \(item.mode.rawValue) \(item.notes)".trimmingCharacters(in: .whitespaces)
+            } else {
+                txTitle = "Amortização Planejada (\(item.source.shortTitle)): \(contract.name)"
+                txDetails = "Planejamento de amortização • Saldo restante projetado: \(AppFormatters.currency(remainingBalDouble)) • \(item.mode.rawValue) \(item.notes)".trimmingCharacters(in: .whitespaces)
+            }
+
+            if let existingTxIdx = transactions.firstIndex(where: { $0.id == txId }) {
+                transactions[existingTxIdx].name = txTitle
+                transactions[existingTxIdx].details = txDetails
+                transactions[existingTxIdx].amount = effectiveAmtDouble
+                transactions[existingTxIdx].date = item.date
+                transactions[existingTxIdx].categoryId = contract.categoryId
+                transactions[existingTxIdx].accountId = contract.accountId
+                transactions[existingTxIdx].ignoreInConsolidated = false
+            } else {
+                let newTx = FinancialTransaction(
+                    id: txId,
+                    name: txTitle,
+                    details: txDetails,
+                    amount: effectiveAmtDouble,
+                    date: item.date,
+                    type: .expense,
+                    isPaid: false,
+                    categoryId: contract.categoryId,
+                    accountId: contract.accountId,
+                    ignoreInConsolidated: false,
+                    recurrenceMode: .single,
+                    linkedContractId: contract.id,
+                    transactionOrigin: .plannedAmortization,
+                    linkedEntityID: item.id
+                )
+                transactions.append(newTx)
+            }
+        }
+
+        transactions.removeAll { tx in
+            tx.linkedContractId == contractId &&
+            tx.transactionOrigin == .plannedAmortization &&
+            !validPlannedTxIds.contains(tx.id)
+        }
+
+        if saveAfter {
+            sortTransactions()
+            invalidateDerivedCaches()
+            saveToDisk()
+        }
+    }
+
+    @discardableResult
+    public func addPlannedAmortization(
+        contractId: UUID,
+        date: Date,
+        amount: Decimal,
+        source: AmortizationFundingSource = .cash,
+        mode: AmortizationRecalculationMode = .reduceTerm,
+        notes: String = ""
+    ) -> PlannedAmortization? {
+        guard let contract = contracts.first(where: { $0.id == contractId }), !contract.isSettled else { return nil }
+        guard amount > .zero else { return nil }
+
+        let effectiveMode: AmortizationRecalculationMode = contract.kind == .loan ? .reduceTerm : mode
+        let todayStart = calendar.startOfDay(for: effectiveCurrentDate)
+        let itemDay = calendar.startOfDay(for: date)
+        let initialStatus: PlannedAmortizationStatus = itemDay < todayStart ? .expired : .pending
+
+        let newItem = PlannedAmortization(
+            contractId: contractId,
+            date: date,
+            amount: amount,
+            source: source,
+            mode: effectiveMode,
+            status: initialStatus,
+            notes: notes
+        )
+
+        if let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }) {
+            amortizationPlans[pIdx].items.append(newItem)
+            amortizationPlans[pIdx].items.sort { $0.date < $1.date }
+            amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+        } else {
+            let bestDay = contract.effectiveBankDueDay >= 28 ? 1 : (contract.effectiveBankDueDay + 1)
+            let plan = AmortizationPlan(
+                contractId: contractId,
+                generationMode: .manual,
+                billingDay: contract.kind == .loan ? bestDay : contract.billingDay,
+                incomeCommitmentPercentage: Decimal(30),
+                defaultRecalculationMode: effectiveMode,
+                estimatedMonthlyTR: LoanProjectionEngine.toDecimal(contract.estimatedMonthlyTR ?? 0.0),
+                items: [newItem],
+                updatedAt: effectiveCurrentDate,
+                createdAt: effectiveCurrentDate
+            )
+            amortizationPlans.append(plan)
+        }
+
+        syncPlannedAmortizationTransactions(for: contractId)
+        if let plan = amortizationPlan(for: contractId) {
+            cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: plan.id, operation: .upsert, entity: plan)
+        }
+        return newItem
+    }
+
+    public func updatePlannedAmortization(
+        contractId: UUID,
+        itemId: UUID,
+        date: Date,
+        amount: Decimal,
+        source: AmortizationFundingSource,
+        mode: AmortizationRecalculationMode,
+        notes: String = ""
+    ) {
+        guard let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }),
+              let iIdx = amortizationPlans[pIdx].items.firstIndex(where: { $0.id == itemId }) else {
+            return
+        }
+        let isLoan = contracts.first(where: { $0.id == contractId })?.kind == .loan
+        let todayStart = calendar.startOfDay(for: effectiveCurrentDate)
+        let itemDay = calendar.startOfDay(for: date)
+
+        amortizationPlans[pIdx].items[iIdx].date = date
+        amortizationPlans[pIdx].items[iIdx].amount = max(.zero, amount)
+        amortizationPlans[pIdx].items[iIdx].source = source
+        amortizationPlans[pIdx].items[iIdx].mode = isLoan ? .reduceTerm : mode
+        if !notes.isEmpty {
+            amortizationPlans[pIdx].items[iIdx].notes = notes
+        }
+        if amortizationPlans[pIdx].items[iIdx].status == .expired && itemDay >= todayStart {
+            amortizationPlans[pIdx].items[iIdx].status = .pending
+        } else if amortizationPlans[pIdx].items[iIdx].status == .pending && itemDay < todayStart {
+            amortizationPlans[pIdx].items[iIdx].status = .expired
+        }
+        amortizationPlans[pIdx].items.sort { $0.date < $1.date }
+        amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: amortizationPlans[pIdx].id, operation: .upsert, entity: amortizationPlans[pIdx])
+    }
+
+    public func removePlannedAmortization(contractId: UUID, itemId: UUID) {
+        guard let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }) else { return }
+        amortizationPlans[pIdx].items.removeAll { $0.id == itemId }
+        amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: amortizationPlans[pIdx].id, operation: .upsert, entity: amortizationPlans[pIdx])
+    }
+
+    public func deleteAmortizationPlan(for contractId: UUID) {
+        let deletedPlans = amortizationPlans.filter { $0.contractId == contractId }
+        let deletedTxs = transactions.filter { $0.linkedContractId == contractId && $0.transactionOrigin == .plannedAmortization }
+        amortizationPlans.removeAll { $0.contractId == contractId }
+        transactions.removeAll { $0.linkedContractId == contractId && $0.transactionOrigin == .plannedAmortization }
+        sortTransactions()
+        invalidateDerivedCaches()
+        saveToDisk()
+        for plan in deletedPlans {
+            cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: plan.id, operation: .delete)
+        }
+        for tx in deletedTxs {
+            cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: tx.id, operation: .delete)
+        }
+    }
+
+    public func projectedAvailableMonthlySurplusForAmortization(
+        in monthReference: Date,
+        excludingContractId: UUID
+    ) -> Decimal {
+        let monthTxs = transactionsForMonth(monthReference).filter { tx in
+            !tx.ignoreInConsolidated &&
+            tx.transactionOrigin != .internalTransfer &&
+            tx.isCanceledRecurringSeries != true &&
+            !(tx.transactionOrigin == .plannedAmortization && tx.linkedContractId == excludingContractId)
+        }
+
+        var incomeSum = monthTxs.filter { $0.type == .income }.reduce(0.0) { $0 + $1.amount }
+        let expenseSum = monthTxs.filter { $0.type == .expense }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
+        let provisionsRemaining = isMonthPriorToCurrent(monthReference) ? 0.0 : totalRemainingProvision(for: monthReference)
+
+        if incomeSum <= 0.01 {
+            let fallbackIncome = max(
+                monthlyIncome(for: selectedMonth),
+                monthlyIncome(for: effectiveCurrentDate)
+            )
+            incomeSum = fallbackIncome
+        }
+
+        let netMonthlySurplus = incomeSum - (expenseSum + provisionsRemaining)
+        if netMonthlySurplus > 0.01 {
+            return LoanProjectionEngine.roundCurrency(LoanProjectionEngine.toDecimal(netMonthlySurplus))
+        }
+
+        let currentKpi = buildUnifiedFinancialKPISummary(referenceDate: selectedMonth, isAnnual: false)
+        if currentKpi.surplusAfterPlanning > 0.01 {
+            return LoanProjectionEngine.roundCurrency(LoanProjectionEngine.toDecimal(currentKpi.surplusAfterPlanning))
+        }
+        if currentKpi.operationalNetBalance > 0.01 {
+            return LoanProjectionEngine.roundCurrency(LoanProjectionEngine.toDecimal(currentKpi.operationalNetBalance))
+        }
+
+        return .zero
+    }
+
+    @discardableResult
+    public func generateAutomaticAmortizationPlan(
+        contractId: UUID,
+        billingDay: Int,
+        incomeCommitmentPercentage: Decimal,
+        mode: AmortizationRecalculationMode = .reduceTerm,
+        estimatedMonthlyTR: Decimal? = nil,
+        fallbackMonthlyBaseSurplus: Decimal? = nil
+    ) -> AmortizationPlan? {
+        guard let contract = contracts.first(where: { $0.id == contractId }), !contract.isSettled else {
+            return nil
+        }
+
+        let unpaidInstallments = transactions.filter {
+            $0.linkedContractId == contractId &&
+            $0.installmentIndex != nil &&
+            !$0.isPaid
+        }
+        let currentRealBal = currentOutstandingBalance(for: contract)
+        let effectiveTR = estimatedMonthlyTR ?? amortizationPlan(for: contractId)?.estimatedMonthlyTR ?? LoanProjectionEngine.toDecimal(contract.estimatedMonthlyTR ?? 0.0)
+        let effectiveMode: AmortizationRecalculationMode = contract.kind == .loan ? .reduceTerm : mode
+
+        let generatedItems = LoanProjectionEngine.generateAutomaticPlanItems(
+            contract: contract,
+            unpaidInstallmentTransactions: unpaidInstallments,
+            currentRealBalanceDouble: currentRealBal,
+            billingDay: billingDay,
+            incomeCommitmentPercentage: incomeCommitmentPercentage,
+            mode: effectiveMode,
+            estimatedMonthlyTR: effectiveTR,
+            referenceNow: effectiveCurrentDate,
+            monthlyAvailableSurplusProvider: { [weak self] targetMonth in
+                guard let self else { return fallbackMonthlyBaseSurplus ?? .zero }
+                let computed = self.projectedAvailableMonthlySurplusForAmortization(in: targetMonth, excludingContractId: contractId)
+                if computed > .zero {
+                    return computed
+                }
+                return fallbackMonthlyBaseSurplus ?? .zero
+            },
+            calendar: calendar
+        )
+
+        let executedItems = amortizationPlan(for: contractId)?.items.filter { $0.status == .executed } ?? []
+        let allItems = (executedItems + generatedItems).sorted { $0.date < $1.date }
+
+        let updatedPlan = AmortizationPlan(
+            id: amortizationPlan(for: contractId)?.id ?? UUID(),
+            contractId: contractId,
+            generationMode: .automatic,
+            billingDay: billingDay,
+            incomeCommitmentPercentage: incomeCommitmentPercentage,
+            defaultRecalculationMode: effectiveMode,
+            estimatedMonthlyTR: effectiveTR,
+            items: allItems,
+            updatedAt: effectiveCurrentDate,
+            createdAt: amortizationPlan(for: contractId)?.createdAt ?? effectiveCurrentDate
+        )
+
+        if let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }) {
+            amortizationPlans[pIdx] = updatedPlan
+        } else {
+            amortizationPlans.append(updatedPlan)
+        }
+
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: updatedPlan.id, operation: .upsert, entity: updatedPlan)
+        return updatedPlan
+    }
+
+    @discardableResult
+    public func confirmPlannedAmortizationPayment(
+        contractId: UUID,
+        itemId: UUID,
+        accountId: UUID? = nil,
+        paymentDate: Date? = nil
+    ) -> Bool {
+        guard let contractIdx = contracts.firstIndex(where: { $0.id == contractId }),
+              let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }),
+              let iIdx = amortizationPlans[pIdx].items.firstIndex(where: { $0.id == itemId }) else {
+            return false
+        }
+
+        let item = amortizationPlans[pIdx].items[iIdx]
+        guard item.status == .pending || item.status == .expired else { return false }
+
+        let contract = contracts[contractIdx]
+        let proj = loanProjection(for: contractId)
+        let effectiveAmountDec = proj?.plannedItemOutcomes[item.id]?.effectiveAmortization ?? item.amount
+        let amountToPay = max(0.01, LoanProjectionEngine.toDouble(effectiveAmountDec > .zero ? effectiveAmountDec : item.amount))
+        let targetAccountId = accountId ?? contract.accountId
+        let effectiveDate = paymentDate ?? item.date
+
+        amortizationPlans[pIdx].items[iIdx].status = .executed
+        amortizationPlans[pIdx].items[iIdx].date = effectiveDate
+        amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+
+        if item.source == .fgts {
+            contracts[contractIdx].lastFGTSUsageDate = effectiveDate
+        }
+
+        if let provisionalTxId = item.linkedTransactionId {
+            transactions.removeAll { $0.id == provisionalTxId }
+        }
+        transactions.removeAll {
+            $0.transactionOrigin == .plannedAmortization && $0.linkedEntityID == item.id
+        }
+
+        let sourceTag = item.source == .fgts ? " [FGTS]" : ""
+        amortizeContract(
+            contractId: contractId,
+            amountPaid: amountToPay,
+            accountId: targetAccountId,
+            date: effectiveDate,
+            mode: contract.kind == .loan ? .reduceTerm : item.mode,
+            proRataInterest: 0.0,
+            notes: ("Amortização planejada confirmada\(sourceTag). " + item.notes).trimmingCharacters(in: .whitespaces)
+        )
+
+        if contracts[contractIdx].isSettled {
+            for idx in amortizationPlans[pIdx].items.indices where amortizationPlans[pIdx].items[idx].status == .pending {
+                amortizationPlans[pIdx].items[idx].status = .skipped
+            }
+        }
+
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: amortizationPlans[pIdx].id, operation: .upsert, entity: amortizationPlans[pIdx])
+        return true
+    }
+
+    @discardableResult
+    public func confirmPlannedAmortizationByTransactionId(_ transactionId: UUID, paymentDate: Date? = nil) -> Bool {
+        for plan in amortizationPlans {
+            if let item = plan.items.first(where: { $0.linkedTransactionId == transactionId }) {
+                return confirmPlannedAmortizationPayment(
+                    contractId: plan.contractId,
+                    itemId: item.id,
+                    paymentDate: paymentDate
+                )
+            }
+        }
+        if let tx = transactions.first(where: { $0.id == transactionId && $0.transactionOrigin == .plannedAmortization }),
+           let contractId = tx.linkedContractId,
+           let itemId = tx.linkedEntityID {
+            return confirmPlannedAmortizationPayment(
+                contractId: contractId,
+                itemId: itemId,
+                paymentDate: paymentDate
+            )
+        }
+        return false
+    }
+
+    public func rescheduleExpiredAmortization(contractId: UUID, itemId: UUID, newDate: Date) {
+        guard let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }),
+              let iIdx = amortizationPlans[pIdx].items.firstIndex(where: { $0.id == itemId }) else {
+            return
+        }
+        let todayStart = calendar.startOfDay(for: effectiveCurrentDate)
+        let targetDate = calendar.startOfDay(for: newDate) < todayStart ? effectiveCurrentDate : newDate
+        amortizationPlans[pIdx].items[iIdx].date = targetDate
+        amortizationPlans[pIdx].items[iIdx].status = .pending
+        amortizationPlans[pIdx].items.sort { $0.date < $1.date }
+        amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: amortizationPlans[pIdx].id, operation: .upsert, entity: amortizationPlans[pIdx])
+    }
+
+    public func skipExpiredAmortization(contractId: UUID, itemId: UUID) {
+        guard let pIdx = amortizationPlans.firstIndex(where: { $0.contractId == contractId }),
+              let iIdx = amortizationPlans[pIdx].items.firstIndex(where: { $0.id == itemId }) else {
+            return
+        }
+        amortizationPlans[pIdx].items[iIdx].status = .skipped
+        amortizationPlans[pIdx].updatedAt = effectiveCurrentDate
+        syncPlannedAmortizationTransactions(for: contractId)
+        cloudSyncService?.recordLocalMutation(entityName: "amortization_plans", entityId: amortizationPlans[pIdx].id, operation: .upsert, entity: amortizationPlans[pIdx])
     }
 
     // MARK: - CRUD: Provisões e Cotas de Categorias
@@ -2909,7 +4246,11 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func transactionsForMonth(_ monthReference: Date) -> [FinancialTransaction] {
-        transactions.filter { isInMonth($0.date, monthReference: monthReference) }
+        ensureTransactionIndexesBuilt()
+        let comps = calendar.dateComponents([.year, .month], from: monthReference)
+        guard let y = comps.year, let m = comps.month else { return [] }
+        let ymKey = y * 100 + m
+        return cachedTransactionsByYM?[ymKey] ?? []
     }
 
     public func isInMonth(_ date: Date, monthReference: Date) -> Bool {
@@ -2972,25 +4313,25 @@ public final class FinancialDataStore: ObservableObject {
     public func monthlyIncome(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .income && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyExpense(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .expense && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyPaidExpense(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyPendingExpenses(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .expense && !$0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyPendingExpense(for month: Date) -> Double {
@@ -3000,13 +4341,13 @@ public final class FinancialDataStore: ObservableObject {
     public func monthlyReceivedIncome(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .income && $0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyPendingIncome(for month: Date) -> Double {
         transactionsForMonth(month)
             .filter { $0.type == .income && !$0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func monthlyNetBalance(for month: Date) -> Double {
@@ -3014,42 +4355,48 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func transactionsForYear(_ yearReference: Date) -> [FinancialTransaction] {
-        transactions
-            .filter { isInYear($0.date, yearReference: yearReference) }
-            .sorted { a, b in
-                if a.date == b.date { return a.createdAt > b.createdAt }
-                return a.date > b.date
-            }
+        ensureTransactionIndexesBuilt()
+        let y = calendar.component(.year, from: yearReference)
+        return (cachedTransactionsByYear?[y] ?? []).sorted { a, b in
+            if a.date == b.date { return a.createdAt > b.createdAt }
+            return a.date > b.date
+        }
     }
 
     public func annualIncome(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .income && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .income && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualExpense(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .expense && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualPaidExpense(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .expense && $0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualPendingExpense(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .expense && !$0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .expense && !$0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualReceivedIncome(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .income && $0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .income && $0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualPendingIncome(for yearReference: Date) -> Double {
-        transactions.filter { isInYear($0.date, yearReference: yearReference) && $0.type == .income && !$0.isPaid && !$0.ignoreInConsolidated }
-            .reduce(0.0) { $0 + $1.amount }
+        transactionsForYear(yearReference)
+            .filter { $0.type == .income && !$0.isPaid && !$0.ignoreInConsolidated }
+            .reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
     }
 
     public func annualNetBalance(for yearReference: Date) -> Double {
@@ -3097,7 +4444,7 @@ public final class FinancialDataStore: ObservableObject {
                 guard tx.date <= cutoff else { return false }
                 return includeProjectedUnpaid ? true : tx.isPaid
             }
-            .reduce(0.0) { $0 + $1.signedAmount }
+            .reduce(0.0) { $0 + effectiveSignedTransactionAmount(for: $1) }
 
         let consolidatedInvestmentsSum = investments
             .filter(\.showInConsolidated)
@@ -3132,13 +4479,15 @@ public final class FinancialDataStore: ObservableObject {
     public func categoryBreakdown(for monthReference: Date, type: TransactionType) -> [CategorySpendSummary] {
         let monthTxs = transactionsForMonth(monthReference)
             .filter { $0.type == type && !$0.ignoreInConsolidated }
-        let grandTotal = monthTxs.reduce(0.0) { $0 + $1.amount }
+        let grandTotal = monthTxs.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
         guard grandTotal > 0 else { return [] }
 
         var grouped: [UUID: (sum: Double, count: Int)] = [:]
         for tx in monthTxs {
+            let effAmt = effectiveTransactionAmount(for: tx)
+            guard effAmt > 0.001 else { continue }
             let current = grouped[tx.categoryId] ?? (0.0, 0)
-            grouped[tx.categoryId] = (current.sum + tx.amount, current.count + 1)
+            grouped[tx.categoryId] = (current.sum + effAmt, current.count + 1)
         }
 
         var result: [CategorySpendSummary] = []
@@ -3163,15 +4512,17 @@ public final class FinancialDataStore: ObservableObject {
     }
 
     public func annualCategoryBreakdown(for yearReference: Date, type: TransactionType) -> [CategorySpendSummary] {
-        let yearTxs = transactions
-            .filter { isInYear($0.date, yearReference: yearReference) && $0.type == type && !$0.ignoreInConsolidated }
-        let grandTotal = yearTxs.reduce(0.0) { $0 + $1.amount }
+        let yearTxs = transactionsForYear(yearReference)
+            .filter { $0.type == type && !$0.ignoreInConsolidated }
+        let grandTotal = yearTxs.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
         guard grandTotal > 0 else { return [] }
 
         var grouped: [UUID: (sum: Double, count: Int)] = [:]
         for tx in yearTxs {
+            let effAmt = effectiveTransactionAmount(for: tx)
+            guard effAmt > 0.001 else { continue }
             let current = grouped[tx.categoryId] ?? (0.0, 0)
-            grouped[tx.categoryId] = (current.sum + tx.amount, current.count + 1)
+            grouped[tx.categoryId] = (current.sum + effAmt, current.count + 1)
         }
 
         var result: [CategorySpendSummary] = []
@@ -3409,12 +4760,11 @@ public final class FinancialDataStore: ObservableObject {
         guard !active.isEmpty else { return 0.0 }
         let ids = Set(active.map(\.id))
         if isAnnual {
-            let txs = transactions.filter {
-                isInYear($0.date, yearReference: referenceDate) &&
+            let txs = transactionsForYear(referenceDate).filter {
                 $0.type == .expense &&
                 $0.linkedContractId != nil &&
                 ids.contains($0.linkedContractId!)
-            }.reduce(0.0) { $0 + $1.amount }
+            }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
             if txs > 0 { return txs }
             return active.reduce(0.0) { $0 + ($1.installmentAmount * 12.0) }
         } else {
@@ -3422,7 +4772,7 @@ public final class FinancialDataStore: ObservableObject {
                 $0.type == .expense &&
                 $0.linkedContractId != nil &&
                 ids.contains($0.linkedContractId!)
-            }.reduce(0.0) { $0 + $1.amount }
+            }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
             if txs > 0 { return txs }
             return active.reduce(0.0) { $0 + $1.installmentAmount }
         }
@@ -3552,12 +4902,12 @@ public final class FinancialDataStore: ObservableObject {
         let topIncomeSourcePercentage = effectiveIncomeForRatio > 0 ? (topIncomeSourceAmount / effectiveIncomeForRatio) * 100.0 : 0.0
 
         // 4. Despesas: Pagas, Pendentes, Fixas vs Variáveis
-        let paidExpense = expenseTxs.filter(\.isPaid).reduce(0.0) { $0 + $1.amount }
+        let paidExpense = expenseTxs.filter(\.isPaid).reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
         let pendingExpenseTxs = expenseTxs.filter { !$0.isPaid }
-        let pendingExpense = pendingExpenseTxs.reduce(0.0) { $0 + $1.amount }
+        let pendingExpense = pendingExpenseTxs.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
 
-        let overdueExpenses = pendingExpenseTxs.filter { calendar.startOfDay(for: $0.date) < todayStart }.reduce(0.0) { $0 + $1.amount }
-        let onTimePendingExpenses = pendingExpenseTxs.filter { calendar.startOfDay(for: $0.date) >= todayStart }.reduce(0.0) { $0 + $1.amount }
+        let overdueExpenses = pendingExpenseTxs.filter { calendar.startOfDay(for: $0.date) < todayStart }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
+        let onTimePendingExpenses = pendingExpenseTxs.filter { calendar.startOfDay(for: $0.date) >= todayStart }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
 
         let recordedExpense: Double = {
             if isClosed {
@@ -3579,8 +4929,8 @@ public final class FinancialDataStore: ObservableObject {
             }
         }()
 
-        let fixedExpenses = expenseTxs.filter { $0.isFixedExpense && (isClosed ? $0.isPaid : true) }.reduce(0.0) { $0 + $1.amount }
-        let variableExpenses = expenseTxs.filter { $0.isVariableExpense && (isClosed ? $0.isPaid : true) }.reduce(0.0) { $0 + $1.amount }
+        let fixedExpenses = expenseTxs.filter { $0.isFixedExpense && (isClosed ? $0.isPaid : true) }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
+        let variableExpenses = expenseTxs.filter { $0.isVariableExpense && (isClosed ? $0.isPaid : true) }.reduce(0.0) { $0 + effectiveTransactionAmount(for: $1) }
         let totalClassifiedExp = fixedExpenses + variableExpenses
         let fixedExpensesPercentage = totalClassifiedExp > 0 ? (fixedExpenses / totalClassifiedExp) * 100.0 : 0.0
         let variableExpensesPercentage = totalClassifiedExp > 0 ? (variableExpenses / totalClassifiedExp) * 100.0 : 0.0
@@ -3653,7 +5003,7 @@ public final class FinancialDataStore: ObservableObject {
                 guard tx.date <= cutoffDate else { return false }
                 return isClosed ? tx.isPaid : true
             }
-            .reduce(0.0) { $0 + $1.signedAmount }
+            .reduce(0.0) { $0 + effectiveSignedTransactionAmount(for: $1) }
         let consolidatedInvestmentsSum = investments
             .filter(\.showInConsolidated)
             .reduce(0.0) { $0 + $1.balance }
@@ -3740,8 +5090,10 @@ public final class FinancialDataStore: ObservableObject {
         investments.removeAll()
         debts.removeAll()
         contracts.removeAll()
+        amortizationPlans.removeAll()
         provisions.removeAll()
         categoryQuotas.removeAll()
+        invalidateDerivedCaches()
         saveToDisk()
         cloudSyncService?.resetSyncState()
     }

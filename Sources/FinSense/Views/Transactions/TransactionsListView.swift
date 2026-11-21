@@ -21,6 +21,7 @@ public struct TransactionsListView: View {
     @State private var isAddSheetPresented: Bool = false
     @State private var isMonthPickerPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
+    @State private var confirmingInstallmentPaymentTx: FinancialTransaction? = nil
 
     public init(
         store: FinancialDataStore,
@@ -201,6 +202,14 @@ public struct TransactionsListView: View {
                                                 store: store,
                                                 onTap: {
                                                     editingTransaction = tx
+                                                },
+                                                onTogglePaid: {
+                                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                                    if !tx.isPaid && store.installmentCorrectionBreakdown(for: tx) != nil {
+                                                        confirmingInstallmentPaymentTx = tx
+                                                    } else {
+                                                        store.toggleTransactionPaid(transactionId: tx.id)
+                                                    }
                                                 }
                                             )
                                             .padding(.horizontal, 20)
@@ -234,6 +243,9 @@ public struct TransactionsListView: View {
             }
             .sheet(item: $editingTransaction) { tx in
                 TransactionDetailSheet(store: store, syncService: syncService, editingTransaction: tx)
+            }
+            .sheet(item: $confirmingInstallmentPaymentTx) { tx in
+                ConfirmInstallmentPaymentModalSheet(store: store, transaction: tx)
             }
         }
     }
@@ -344,14 +356,13 @@ public struct TransactionsListView: View {
     private struct DayGroup {
         let date: Date
         let transactions: [FinancialTransaction]
-        var netAmount: Double {
-            transactions.reduce(0.0) { $0 + $1.signedAmount }
-        }
+        let netAmount: Double
     }
 
     private var filteredGroupedDays: [DayGroup] {
         let cal = Calendar.current
         var list = store.transactions(for: store.selectedMonth)
+            .filter { store.isTransactionVisibleInCurrentScenario($0) }
 
         // Filtro por Segmento
         switch selectedFilter {
@@ -377,7 +388,9 @@ public struct TransactionsListView: View {
         }
 
         return grouped.keys.sorted(by: >).map { date in
-            DayGroup(date: date, transactions: grouped[date]!.sorted(by: { $0.date > $1.date }))
+            let dayTxs = grouped[date]!.sorted(by: { $0.date > $1.date })
+            let dayNet = dayTxs.reduce(0.0) { $0 + store.effectiveSignedTransactionAmount(for: $1) }
+            return DayGroup(date: date, transactions: dayTxs, netAmount: dayNet)
         }
     }
 }
@@ -386,65 +399,262 @@ public struct TransactionRow: View {
     public let transaction: FinancialTransaction
     @ObservedObject public var store: FinancialDataStore
     public var onTap: () -> Void
+    public var onTogglePaid: (() -> Void)? = nil
 
     public var body: some View {
-        Button(action: onTap) {
-            let cat = store.categories.first(where: { $0.id == transaction.categoryId })
-            let acc = store.accounts.first(where: { $0.id == transaction.accountId })
+        let cat = store.categories.first(where: { $0.id == transaction.categoryId })
+        let acc = store.accounts.first(where: { $0.id == transaction.accountId })
+        let projStatus = store.transactionProjectionStatus(for: transaction)
+        let isFullPayoffTx = store.isPlannedAmortizationFullPayoff(transaction)
+        let effectiveAmount = store.effectiveTransactionAmount(for: transaction)
+        let isShadowed = projStatus == .shadowed
+        let correctionBreakdown = store.installmentCorrectionBreakdown(for: transaction)
 
-            LiquidGlassCard(cornerRadius: 16, padding: 12) {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: cat?.colorHex ?? "#3B82F6").opacity(0.18))
-                            .frame(width: 40, height: 40)
-                        Image(systemName: cat?.iconSymbol ?? "tag.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(Color(hex: cat?.colorHex ?? "#3B82F6"))
+        LiquidGlassCard(cornerRadius: 16, padding: 12) {
+            HStack(spacing: 12) {
+                if let onTogglePaid {
+                    Button(action: onTogglePaid) {
+                        Image(systemName: transaction.isPaid ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(transaction.isPaid ? Color(hex: "#10B981") : Color.secondary.opacity(0.6))
                     }
+                    .buttonStyle(.plain)
+                }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(transaction.name)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                            .lineLimit(1)
+                Button(action: onTap) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill((isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6")).opacity(0.18))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: isFullPayoffTx ? "checkmark.seal.fill" : (cat?.iconSymbol ?? "tag.fill"))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6"))
+                        }
 
-                        HStack(spacing: 6) {
-                            if let acc {
-                                Text(acc.name)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(Color.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(transaction.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(isShadowed ? Color.secondary : (isFullPayoffTx ? Color(hex: "#10B981") : Color.primary))
+                                .strikethrough(isShadowed, color: .secondary)
+                                .lineLimit(1)
+
+                            HStack(spacing: 6) {
+                                if let acc {
+                                    Text(acc.name)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color.secondary)
+                                }
+
+                                if let badge = transaction.installmentBadge {
+                                    Text(badge)
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                                        .foregroundStyle(Color.secondary)
+                                }
+
+                                if isFullPayoffTx {
+                                    Text("Liquidação Planejada (Quitação Total)")
+                                        .font(.system(size: 9, weight: .heavy))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#10B981").opacity(0.22)))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                } else if projStatus == .pendingAmortization {
+                                    Text("Amortização Planejada")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#8B5CF6").opacity(0.18)))
+                                        .foregroundStyle(Color(hex: "#8B5CF6"))
+                                } else if isShadowed {
+                                    Text("Suprimida pelo Plano (R$ 0,00)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#10B981").opacity(0.16)))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                } else if !transaction.isPaid {
+                                    Text("Pendente")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: "#F59E0B").opacity(0.18)))
+                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                }
                             }
 
-                            if let badge = transaction.installmentBadge {
-                                Text(badge)
-                                    .font(.system(size: 9, weight: .bold))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(Capsule().fill(Color.primary.opacity(0.08)))
-                                    .foregroundStyle(Color.secondary)
+                            if let breakdown = correctionBreakdown {
+                                if let confirmed = breakdown.confirmedRealCorrectionAmount, transaction.isPaid {
+                                    Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Juros/Correção Efetivada: +\(AppFormatters.currency(confirmed))")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                        .lineLimit(1)
+                                } else {
+                                    Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Projeção (+\(breakdown.futureMonthStep)m): +\(AppFormatters.currency(breakdown.projectedCorrectionAmount))")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                        .lineLimit(1)
+                                }
                             }
+                        }
 
-                            if !transaction.isPaid {
-                                Text("Pendente")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(Capsule().fill(Color(hex: "#F59E0B").opacity(0.18)))
-                                    .foregroundStyle(Color(hex: "#F59E0B"))
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(AppFormatters.currency(effectiveAmount))
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundStyle(
+                                    isShadowed
+                                        ? Color(hex: "#10B981")
+                                        : (isFullPayoffTx ? Color(hex: "#10B981") : (transaction.type == .income ? Color(hex: "#10B981") : Color.primary))
+                                )
+
+                            if isShadowed {
+                                Text(AppFormatters.currency(transaction.amount))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .strikethrough(true, color: .secondary)
+                                    .foregroundStyle(Color.secondary)
                             }
                         }
                     }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isFullPayoffTx ? Color(hex: "#10B981").opacity(0.55) : Color.clear, lineWidth: 1.3)
+        )
+    }
+}
 
-                    Spacer()
+// MARK: - Modal para Confirmar Valor Real Final de Parcela com Correção Projetada (Caixa TP)
 
-                    Text(AppFormatters.currency(transaction.amount))
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundStyle(transaction.type == .income ? Color(hex: "#10B981") : Color.primary)
+public struct ConfirmInstallmentPaymentModalSheet: View {
+    @ObservedObject var store: FinancialDataStore
+    public let transaction: FinancialTransaction
+    @Environment(\.dismiss) var dismiss
+
+    @State private var finalPaidAmountText: String = ""
+
+    public init(store: FinancialDataStore, transaction: FinancialTransaction) {
+        self.store = store
+        self.transaction = transaction
+        _finalPaidAmountText = State(initialValue: AppFormatters.currency(transaction.amount))
+    }
+
+    private var breakdown: InstallmentCorrectionBreakdown? {
+        store.installmentCorrectionBreakdown(for: transaction)
+    }
+
+    private var baseAmount: Double {
+        breakdown?.baseRegisteredAmount ?? transaction.baseInstallmentRegisteredAmount ?? transaction.amount
+    }
+
+    private var projectedCorrection: Double {
+        breakdown?.projectedCorrectionAmount ?? transaction.projectedInstallmentCorrectionAmount ?? max(0.0, transaction.amount - baseAmount)
+    }
+
+    private var parsedFinalAmount: Double {
+        AppFormatters.parseAmount(finalPaidAmountText) ?? transaction.amount
+    }
+
+    private var effectiveCorrectionOnOccasion: Double {
+        max(0.0, parsedFinalAmount - baseAmount)
+    }
+
+    public var body: some View {
+        NavigationStack {
+            Form {
+                Section("Composição da Parcela") {
+                    HStack {
+                        Text("Parcela Base Cadastrada")
+                        Spacer()
+                        Text(AppFormatters.currency(baseAmount))
+                            .font(.system(.body, design: .monospaced))
+                            .bold()
+                    }
+
+                    HStack {
+                        Text("Correção/Juros Projetado")
+                        Spacer()
+                        Text("+\(AppFormatters.currency(projectedCorrection))")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(Color(hex: "#F59E0B"))
+                    }
+
+                    HStack {
+                        Text("Total Projetado no Fechamento")
+                        Spacer()
+                        Text(AppFormatters.currency(baseAmount + projectedCorrection))
+                            .font(.system(.body, design: .monospaced))
+                            .bold()
+                    }
+                }
+
+                Section("Confirmação do Pagamento Efetivo") {
+                    HStack {
+                        Text("Valor Real Final Pago")
+                        Spacer()
+                        BRLCurrencyTextField("R$ 0,00", text: $finalPaidAmountText)
+                    }
+
+                    HStack {
+                        Text("Juros / Correção Efetivada na Ocasião")
+                        Spacer()
+                        Text("+\(AppFormatters.currency(effectiveCorrectionOnOccasion))")
+                            .font(.system(.body, design: .monospaced))
+                            .bold()
+                            .foregroundStyle(Color(hex: "#10B981"))
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("Usar Projetado") {
+                            finalPaidAmountText = AppFormatters.currency(baseAmount + projectedCorrection)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button("Usar Base") {
+                            finalPaidAmountText = AppFormatters.currency(baseAmount)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
+                Section {
+                    Label(
+                        "Este ajuste de correção/juros impacta apenas o fechamento mensal do fluxo de caixa e não altera o saldo devedor de quitação do financiamento.",
+                        systemImage: "shield.checkered"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(Color.secondary)
+                }
+            }
+            .navigationTitle("Confirmar Pagamento")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Confirmar e Pagar") {
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        store.confirmContractInstallmentPayment(
+                            transactionId: transaction.id,
+                            realPaidAmount: parsedFinalAmount
+                        )
+                        dismiss()
+                    }
+                    .bold()
+                    .disabled(parsedFinalAmount <= 0)
                 }
             }
         }
-        .buttonStyle(.plain)
     }
 }
 

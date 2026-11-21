@@ -322,6 +322,7 @@ public final class CloudSyncService: ObservableObject {
         let accounts = store.accounts
         let categories = store.categories
         let contracts = store.contracts
+        let plans = store.amortizationPlans
         let investments = store.investments
         let debts = store.debts
         let provisions = store.provisions
@@ -356,6 +357,7 @@ public final class CloudSyncService: ObservableObject {
         addItems(items: accounts, entityName: "bank_accounts", idKeyPath: \.id)
         addItems(items: categories, entityName: "categories", idKeyPath: \.id)
         addItems(items: contracts, entityName: "credit_contracts", idKeyPath: \.id)
+        addItems(items: plans, entityName: "amortization_plans", idKeyPath: \.id)
         addItems(items: investments, entityName: "investment_items", idKeyPath: \.id)
         addItems(items: debts, entityName: "debt_items", idKeyPath: \.id)
         addItems(items: provisions, entityName: "category_provisions", idKeyPath: \.id)
@@ -394,6 +396,7 @@ public final class CloudSyncService: ObservableObject {
                 case "investment_items": store.investments.removeAll { $0.id == change.entityId }
                 case "debt_items": store.debts.removeAll { $0.id == change.entityId }
                 case "credit_contracts": store.contracts.removeAll { $0.id == change.entityId }
+                case "amortization_plans": store.amortizationPlans.removeAll { $0.id == change.entityId }
                 case "category_provisions": store.provisions.removeAll { $0.id == change.entityId }
                 case "category_quota_rules": store.categoryQuotas.removeAll { $0.id == change.entityId }
                 default: break
@@ -430,6 +433,12 @@ public final class CloudSyncService: ObservableObject {
                     if let item = try? decoder.decode(CreditContract.self, from: rawData) {
                         if let idx = store.contracts.firstIndex(where: { $0.id == item.id }) { store.contracts[idx] = item }
                         else { store.contracts.append(item) }
+                    }
+                case "amortization_plans":
+                    if let item = try? decoder.decode(AmortizationPlan.self, from: rawData) {
+                        if let idx = store.amortizationPlans.firstIndex(where: { $0.id == item.id }) { store.amortizationPlans[idx] = item }
+                        else { store.amortizationPlans.append(item) }
+                        store.syncPlannedAmortizationTransactions(for: item.contractId, saveAfter: false)
                     }
                 case "category_provisions":
                     if let item = try? decoder.decode(CategoryProvision.self, from: rawData) {
@@ -469,6 +478,7 @@ public final class CloudSyncService: ObservableObject {
             case "investment_items": store.investments.removeAll { $0.id == tomb.entityId }
             case "debt_items": store.debts.removeAll { $0.id == tomb.entityId }
             case "credit_contracts": store.contracts.removeAll { $0.id == tomb.entityId }
+            case "amortization_plans": store.amortizationPlans.removeAll { $0.id == tomb.entityId }
             case "category_provisions": store.provisions.removeAll { $0.id == tomb.entityId }
             case "category_quota_rules": store.categoryQuotas.removeAll { $0.id == tomb.entityId }
             default: break
@@ -535,6 +545,17 @@ public final class CloudSyncService: ObservableObject {
                 }
             }
         }
+        if let plans = deltas.amortizationPlans {
+            for item in plans {
+                if outboxQueue.contains(where: { $0.entityId == item.id }) { continue }
+                if let idx = store.amortizationPlans.firstIndex(where: { $0.id == item.id }) {
+                    store.amortizationPlans[idx] = item
+                } else {
+                    store.amortizationPlans.append(item)
+                }
+                store.syncPlannedAmortizationTransactions(for: item.contractId, saveAfter: false)
+            }
+        }
         if let provisions = deltas.categoryProvisions {
             for item in provisions {
                 if outboxQueue.contains(where: { $0.entityId == item.id }) { continue }
@@ -593,6 +614,9 @@ public final class CloudSyncService: ObservableObject {
         }
         for contract in store.contracts {
             recordLocalMutation(entityName: "credit_contracts", entityId: contract.id, operation: .upsert, entity: contract)
+        }
+        for plan in store.amortizationPlans {
+            recordLocalMutation(entityName: "amortization_plans", entityId: plan.id, operation: .upsert, entity: plan)
         }
         for prov in store.provisions {
             recordLocalMutation(entityName: "category_provisions", entityId: prov.id, operation: .upsert, entity: prov)

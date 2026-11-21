@@ -331,6 +331,20 @@ public struct CreditContract: Identifiable, Codable, Hashable {
     public var financingDetails: FinancingModel?
     public var loanDetails: LoanModel?
 
+    // Metadados Documentais & Motor de Amortização (Santander DDC / Caixa Habitação)
+    public var bankDueDay: Int?
+    public var referenceDate: Date?
+    public var maturityDate: Date?
+    public var estimatedMonthlyTR: Double?
+    public var lastFGTSUsageDate: Date?
+    public var scheduledInstallments: [ContractInstallmentScheduleItem]?
+    public var averageMonthlyInstallmentGrowth: Double?
+
+    /// Dia efetivo de vencimento/liquidação no banco (para cálculos pró-rata e ciclo de competência bancária)
+    public var effectiveBankDueDay: Int {
+        min(max(bankDueDay ?? billingDay, 1), 31)
+    }
+
     public init(
         id: UUID = UUID(),
         kind: CreditContractKind,
@@ -364,7 +378,14 @@ public struct CreditContract: Identifiable, Codable, Hashable {
         insuranceFee: Double? = nil,
         baseInstallmentAmount: Double? = nil,
         financingDetails: FinancingModel? = nil,
-        loanDetails: LoanModel? = nil
+        loanDetails: LoanModel? = nil,
+        bankDueDay: Int? = nil,
+        referenceDate: Date? = nil,
+        maturityDate: Date? = nil,
+        estimatedMonthlyTR: Double? = nil,
+        lastFGTSUsageDate: Date? = nil,
+        scheduledInstallments: [ContractInstallmentScheduleItem]? = nil,
+        averageMonthlyInstallmentGrowth: Double? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -400,6 +421,13 @@ public struct CreditContract: Identifiable, Codable, Hashable {
         self.baseInstallmentAmount = baseInstallmentAmount
         self.financingDetails = financingDetails
         self.loanDetails = loanDetails
+        self.bankDueDay = bankDueDay.map { min(max($0, 1), 31) }
+        self.referenceDate = referenceDate
+        self.maturityDate = maturityDate
+        self.estimatedMonthlyTR = estimatedMonthlyTR
+        self.lastFGTSUsageDate = lastFGTSUsageDate
+        self.scheduledInstallments = scheduledInstallments
+        self.averageMonthlyInstallmentGrowth = averageMonthlyInstallmentGrowth
 
         if kind == .financing && self.financingDetails == nil {
             let effAnnual = annualNominalInterestRate ?? (monthlyInterestRate > 0 ? monthlyInterestRate * 12.0 : 8.51)
@@ -560,6 +588,7 @@ public struct CreditContract: Identifiable, Codable, Hashable {
         case isSettled, settledAmount, settledDate, settledAccountId, notes, createdAt
         case annualNominalInterestRate, indexationRate, adminFee, insuranceFee
         case baseInstallmentAmount, financingDetails, loanDetails
+        case bankDueDay, referenceDate, maturityDate, estimatedMonthlyTR, lastFGTSUsageDate, scheduledInstallments, averageMonthlyInstallmentGrowth
     }
 
     public init(from decoder: Decoder) throws {
@@ -632,6 +661,21 @@ public struct CreditContract: Identifiable, Codable, Hashable {
             ?? (try? c.decodeIfPresent(FinancingModel.self, forKey: AnyKey("financing_details")))
         self.loanDetails = (try? c.decodeIfPresent(LoanModel.self, forKey: AnyKey("loanDetails")))
             ?? (try? c.decodeIfPresent(LoanModel.self, forKey: AnyKey("loan_details")))
+
+        self.bankDueDay = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("bankDueDay")))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("bank_due_day")))
+        self.referenceDate = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("referenceDate")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("reference_date")))
+        self.maturityDate = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("maturityDate")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("maturity_date")))
+        self.estimatedMonthlyTR = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimatedMonthlyTR")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimated_monthly_tr")))
+        self.lastFGTSUsageDate = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("lastFGTSUsageDate")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("last_fgts_usage_date")))
+        self.scheduledInstallments = (try? c.decodeIfPresent([ContractInstallmentScheduleItem].self, forKey: AnyKey("scheduledInstallments")))
+            ?? (try? c.decodeIfPresent([ContractInstallmentScheduleItem].self, forKey: AnyKey("scheduled_installments")))
+        self.averageMonthlyInstallmentGrowth = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("averageMonthlyInstallmentGrowth")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("average_monthly_installment_growth")))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -669,6 +713,13 @@ public struct CreditContract: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(baseInstallmentAmount, forKey: .baseInstallmentAmount)
         try c.encodeIfPresent(financingDetails, forKey: .financingDetails)
         try c.encodeIfPresent(loanDetails, forKey: .loanDetails)
+        try c.encodeIfPresent(bankDueDay, forKey: .bankDueDay)
+        try c.encodeIfPresent(referenceDate, forKey: .referenceDate)
+        try c.encodeIfPresent(maturityDate, forKey: .maturityDate)
+        try c.encodeIfPresent(estimatedMonthlyTR, forKey: .estimatedMonthlyTR)
+        try c.encodeIfPresent(lastFGTSUsageDate, forKey: .lastFGTSUsageDate)
+        try c.encodeIfPresent(scheduledInstallments, forKey: .scheduledInstallments)
+        try c.encodeIfPresent(averageMonthlyInstallmentGrowth, forKey: .averageMonthlyInstallmentGrowth)
     }
 
     public var subtypeDisplayName: String {
@@ -694,5 +745,314 @@ public struct CreditContract: Identifiable, Codable, Hashable {
         case .financing:
             return (financingSubtype ?? .imovel).iconSymbol
         }
+    }
+}
+
+// MARK: - Cronograma Individual de Parcela & Decomposição de Correção Projetada
+
+public struct InstallmentCorrectionBreakdown: Hashable {
+    public let baseRegisteredAmount: Double
+    public let projectedCorrectionAmount: Double
+    public let confirmedRealCorrectionAmount: Double?
+    public let effectiveTotalAmount: Double
+    public let averageMonthlyGrowth: Double
+    public let futureMonthStep: Int
+
+    public init(
+        baseRegisteredAmount: Double,
+        projectedCorrectionAmount: Double,
+        confirmedRealCorrectionAmount: Double?,
+        effectiveTotalAmount: Double,
+        averageMonthlyGrowth: Double,
+        futureMonthStep: Int
+    ) {
+        self.baseRegisteredAmount = baseRegisteredAmount
+        self.projectedCorrectionAmount = projectedCorrectionAmount
+        self.confirmedRealCorrectionAmount = confirmedRealCorrectionAmount
+        self.effectiveTotalAmount = effectiveTotalAmount
+        self.averageMonthlyGrowth = averageMonthlyGrowth
+        self.futureMonthStep = futureMonthStep
+    }
+}
+
+public struct ContractInstallmentScheduleItem: Identifiable, Codable, Hashable {
+    public var id: Int { installmentNumber }
+    public var installmentNumber: Int
+    public var bankDueDate: Date
+    public var amount: Double
+    public var principalAmount: Double?
+    public var interestAmount: Double?
+
+    public init(
+        installmentNumber: Int,
+        bankDueDate: Date,
+        amount: Double,
+        principalAmount: Double? = nil,
+        interestAmount: Double? = nil
+    ) {
+        self.installmentNumber = installmentNumber
+        self.bankDueDate = bankDueDate
+        self.amount = abs(amount)
+        self.principalAmount = principalAmount.map { abs($0) }
+        self.interestAmount = interestAmount.map { abs($0) }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case installmentNumber, bankDueDate, amount, principalAmount, interestAmount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.installmentNumber = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("installmentNumber")))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("installment_number"))) ?? 1
+        self.bankDueDate = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("bankDueDate")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("bank_due_date"))) ?? Date()
+        self.amount = abs((try? c.decodeIfPresent(Double.self, forKey: AnyKey("amount"))) ?? 0.0)
+        self.principalAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("principalAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("principal_amount")))
+        self.interestAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("interestAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("interest_amount")))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(installmentNumber, forKey: .installmentNumber)
+        try c.encode(bankDueDate, forKey: .bankDueDate)
+        try c.encode(amount, forKey: .amount)
+        try c.encodeIfPresent(principalAmount, forKey: .principalAmount)
+        try c.encodeIfPresent(interestAmount, forKey: .interestAmount)
+    }
+}
+
+// MARK: - Camada 2 (Intenção / Planejamento de Amortização) & Cenários de Orçamento
+
+public enum AmortizationFundingSource: String, Codable, CaseIterable, Identifiable, Hashable {
+    case cash = "Recursos Próprios (Dinheiro)"
+    case fgts = "FGTS"
+
+    public var id: String { rawValue }
+
+    public var shortTitle: String {
+        switch self {
+        case .cash: return "Dinheiro"
+        case .fgts: return "FGTS"
+        }
+    }
+}
+
+public enum PlannedAmortizationStatus: String, Codable, CaseIterable, Identifiable, Hashable {
+    case pending = "Pendente"
+    case executed = "Confirmado / Pago"
+    case expired = "Expirado"
+    case skipped = "Descartado"
+
+    public var id: String { rawValue }
+}
+
+public enum AmortizationPlanGenerationMode: String, Codable, CaseIterable, Identifiable, Hashable {
+    case manual = "Manual"
+    case automatic = "Automático (% da Renda)"
+
+    public var id: String { rawValue }
+}
+
+public enum BudgetProjectionScenario: String, Codable, CaseIterable, Identifiable, Hashable {
+    case realBase = "Real (Base)"
+    case withPlanning = "Com Planejamento"
+
+    public var id: String { rawValue }
+
+    public var iconSymbol: String {
+        switch self {
+        case .realBase: return "eye"
+        case .withPlanning: return "wand.and.stars"
+        }
+    }
+}
+
+public enum ProjectedInstallmentStatus: String, Codable, CaseIterable, Identifiable, Hashable {
+    case active = "Ativa"
+    case pendingAmortization = "Amortização Planejada"
+    case shadowed = "Suprimida pelo Plano"
+
+    public var id: String { rawValue }
+}
+
+public struct PlannedAmortization: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var contractId: UUID
+    public var date: Date
+    public var amount: Decimal
+    public var source: AmortizationFundingSource
+    public var mode: AmortizationRecalculationMode
+    public var status: PlannedAmortizationStatus
+    public var linkedTransactionId: UUID?
+    public var notes: String
+    public var createdAt: Date
+
+    public var amountDouble: Double {
+        NSDecimalNumber(decimal: amount).doubleValue
+    }
+
+    public init(
+        id: UUID = UUID(),
+        contractId: UUID,
+        date: Date,
+        amount: Decimal,
+        source: AmortizationFundingSource = .cash,
+        mode: AmortizationRecalculationMode = .reduceTerm,
+        status: PlannedAmortizationStatus = .pending,
+        linkedTransactionId: UUID? = nil,
+        notes: String = "",
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.contractId = contractId
+        self.date = date
+        self.amount = max(Decimal.zero, amount)
+        self.source = source
+        self.mode = mode
+        self.status = status
+        self.linkedTransactionId = linkedTransactionId
+        self.notes = notes
+        self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, contractId, date, amount, source, mode, status, linkedTransactionId, notes, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.id = (try? c.decode(UUID.self, forKey: AnyKey("id"))) ?? UUID()
+        self.contractId = (try? c.decode(UUID.self, forKey: AnyKey("contractId")))
+            ?? (try? c.decode(UUID.self, forKey: AnyKey("contract_id"))) ?? UUID()
+        self.date = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("date"))) ?? Date()
+        if let dec = try? c.decodeIfPresent(Decimal.self, forKey: AnyKey("amount")) {
+            self.amount = max(.zero, dec)
+        } else if let dbl = try? c.decodeIfPresent(Double.self, forKey: AnyKey("amount")) {
+            self.amount = max(.zero, Decimal(dbl))
+        } else {
+            self.amount = .zero
+        }
+        self.source = (try? c.decodeIfPresent(AmortizationFundingSource.self, forKey: AnyKey("source"))) ?? .cash
+        self.mode = (try? c.decodeIfPresent(AmortizationRecalculationMode.self, forKey: AnyKey("mode"))) ?? .reduceTerm
+        self.status = (try? c.decodeIfPresent(PlannedAmortizationStatus.self, forKey: AnyKey("status"))) ?? .pending
+        self.linkedTransactionId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linkedTransactionId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linked_transaction_id")))
+        self.notes = (try? c.decodeIfPresent(String.self, forKey: AnyKey("notes"))) ?? ""
+        self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(contractId, forKey: .contractId)
+        try c.encode(date, forKey: .date)
+        try c.encode(amount, forKey: .amount)
+        try c.encode(source, forKey: .source)
+        try c.encode(mode, forKey: .mode)
+        try c.encode(status, forKey: .status)
+        try c.encodeIfPresent(linkedTransactionId, forKey: .linkedTransactionId)
+        try c.encode(notes, forKey: .notes)
+        try c.encode(createdAt, forKey: .createdAt)
+    }
+}
+
+public struct AmortizationPlan: Identifiable, Codable, Hashable {
+    public var id: UUID
+    public var contractId: UUID
+    public var generationMode: AmortizationPlanGenerationMode
+    public var billingDay: Int
+    public var incomeCommitmentPercentage: Decimal
+    public var defaultRecalculationMode: AmortizationRecalculationMode
+    public var estimatedMonthlyTR: Decimal
+    public var items: [PlannedAmortization]
+    public var updatedAt: Date
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        contractId: UUID,
+        generationMode: AmortizationPlanGenerationMode = .manual,
+        billingDay: Int = 26,
+        incomeCommitmentPercentage: Decimal = Decimal(30),
+        defaultRecalculationMode: AmortizationRecalculationMode = .reduceTerm,
+        estimatedMonthlyTR: Decimal = Decimal.zero,
+        items: [PlannedAmortization] = [],
+        updatedAt: Date = Date(),
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.contractId = contractId
+        self.generationMode = generationMode
+        self.billingDay = min(max(billingDay, 1), 31)
+        self.incomeCommitmentPercentage = min(max(incomeCommitmentPercentage, Decimal(1)), Decimal(100))
+        self.defaultRecalculationMode = defaultRecalculationMode
+        self.estimatedMonthlyTR = max(Decimal.zero, estimatedMonthlyTR)
+        self.items = items
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, contractId, generationMode, billingDay, incomeCommitmentPercentage
+        case defaultRecalculationMode, estimatedMonthlyTR, items, updatedAt, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        self.id = (try? c.decode(UUID.self, forKey: AnyKey("id"))) ?? UUID()
+        self.contractId = (try? c.decode(UUID.self, forKey: AnyKey("contractId")))
+            ?? (try? c.decode(UUID.self, forKey: AnyKey("contract_id"))) ?? UUID()
+        self.generationMode = (try? c.decodeIfPresent(AmortizationPlanGenerationMode.self, forKey: AnyKey("generationMode")))
+            ?? (try? c.decodeIfPresent(AmortizationPlanGenerationMode.self, forKey: AnyKey("generation_mode"))) ?? .manual
+        let rawDay = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("billingDay")))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("billing_day"))) ?? 26
+        self.billingDay = min(max(rawDay, 1), 31)
+
+        if let decPct = (try? c.decodeIfPresent(Decimal.self, forKey: AnyKey("incomeCommitmentPercentage")))
+            ?? (try? c.decodeIfPresent(Decimal.self, forKey: AnyKey("income_commitment_percentage"))) {
+            self.incomeCommitmentPercentage = min(max(decPct, Decimal(1)), Decimal(100))
+        } else if let dblPct = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("incomeCommitmentPercentage")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("income_commitment_percentage"))) {
+            self.incomeCommitmentPercentage = min(max(Decimal(dblPct), Decimal(1)), Decimal(100))
+        } else {
+            self.incomeCommitmentPercentage = Decimal(30)
+        }
+
+        self.defaultRecalculationMode = (try? c.decodeIfPresent(AmortizationRecalculationMode.self, forKey: AnyKey("defaultRecalculationMode")))
+            ?? (try? c.decodeIfPresent(AmortizationRecalculationMode.self, forKey: AnyKey("default_recalculation_mode"))) ?? .reduceTerm
+
+        if let decTR = (try? c.decodeIfPresent(Decimal.self, forKey: AnyKey("estimatedMonthlyTR")))
+            ?? (try? c.decodeIfPresent(Decimal.self, forKey: AnyKey("estimated_monthly_tr"))) {
+            self.estimatedMonthlyTR = max(.zero, decTR)
+        } else if let dblTR = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimatedMonthlyTR")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("estimated_monthly_tr"))) {
+            self.estimatedMonthlyTR = max(.zero, Decimal(dblTR))
+        } else {
+            self.estimatedMonthlyTR = .zero
+        }
+
+        self.items = (try? c.decodeIfPresent([PlannedAmortization].self, forKey: AnyKey("items"))) ?? []
+        self.updatedAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("updatedAt")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("updated_at"))) ?? Date()
+        self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(contractId, forKey: .contractId)
+        try c.encode(generationMode, forKey: .generationMode)
+        try c.encode(billingDay, forKey: .billingDay)
+        try c.encode(incomeCommitmentPercentage, forKey: .incomeCommitmentPercentage)
+        try c.encode(defaultRecalculationMode, forKey: .defaultRecalculationMode)
+        try c.encode(estimatedMonthlyTR, forKey: .estimatedMonthlyTR)
+        try c.encode(items, forKey: .items)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encode(createdAt, forKey: .createdAt)
     }
 }

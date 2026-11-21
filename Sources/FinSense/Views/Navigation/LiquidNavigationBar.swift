@@ -38,6 +38,46 @@ public struct LiquidNavigationBar: View {
 
             Spacer()
 
+            // Atalho global de Cenário de Planejamento de Amortização (quando houver plano salvo)
+            if let store = syncService.store, store.hasAnyAmortizationPlan {
+                Menu {
+                    ForEach(BudgetProjectionScenario.allCases) { scenario in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            store.budgetProjectionScenario = scenario
+                        } label: {
+                            HStack {
+                                Label(scenario.rawValue, systemImage: scenario.iconSymbol)
+                                if store.budgetProjectionScenario == scenario {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: store.budgetProjectionScenario.iconSymbol)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(store.budgetProjectionScenario == .withPlanning ? "Com Plano" : "Real (Base)")
+                            .font(.system(size: 10.5, weight: .bold))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6") : Color.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.16) : Color.primary.opacity(0.06))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.35) : Color.white.opacity(0.2), lineWidth: 0.8)
+                    )
+                }
+            }
+
             // Cloud Sync Indicator Pill (Apenas quando autenticado)
             if syncService.authService?.isAuthenticated == true {
                 Button {

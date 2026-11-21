@@ -67,6 +67,17 @@ public enum AppFormatters {
         }
     }
 
+    public static let dayMonthFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "pt_BR")
+        df.dateFormat = "dd/MM"
+        return df
+    }()
+
+    public static func dayMonth(_ date: Date) -> String {
+        dayMonthFormatter.string(from: date)
+    }
+
     public static func shortDate(_ date: Date) -> String {
         shortDateFormatter.string(from: date)
     }

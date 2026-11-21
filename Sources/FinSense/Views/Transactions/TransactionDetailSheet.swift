@@ -178,6 +178,7 @@ public struct TransactionDetailSheet: View {
             : (store.categories.first(where: { $0.type == type })?.id ?? store.categories.first?.id ?? selectedCategoryId)
 
         if var editing = editingTransaction {
+            let wasUnpaid = !editing.isPaid
             editing.name = name
             editing.details = details
             editing.amount = amount
@@ -189,6 +190,11 @@ public struct TransactionDetailSheet: View {
             editing.recurrenceMode = recurrenceMode
             if recurrenceMode == .installment {
                 editing.installmentTotal = installmentTotal
+            }
+            if wasUnpaid && isPaid, let baseReg = editing.baseInstallmentRegisteredAmount, baseReg > 0 {
+                editing.confirmedRealInterestCorrectionAmount = max(0.0, amount - baseReg)
+            } else if !isPaid {
+                editing.confirmedRealInterestCorrectionAmount = nil
             }
             store.updateTransaction(editing)
         } else {

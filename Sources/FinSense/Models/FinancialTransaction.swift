@@ -103,6 +103,7 @@ public enum TransactionOrigin: String, Codable, CaseIterable, Identifiable, Hash
     case loanAmortization
     case loanPayoff
     case contractSettlement
+    case plannedAmortization
     case investmentDeposit
     case investmentRedemption
     case debtPayment
@@ -141,6 +142,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
     public var linkedQuotaYearMonthKey: Int?
     public var transactionOrigin: TransactionOrigin?
     public var linkedEntityID: UUID?
+    public var baseInstallmentRegisteredAmount: Double?
+    public var projectedInstallmentCorrectionAmount: Double?
+    public var confirmedRealInterestCorrectionAmount: Double?
     public var createdAt: Date
 
     public init(
@@ -172,6 +176,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         linkedQuotaYearMonthKey: Int? = nil,
         transactionOrigin: TransactionOrigin? = nil,
         linkedEntityID: UUID? = nil,
+        baseInstallmentRegisteredAmount: Double? = nil,
+        projectedInstallmentCorrectionAmount: Double? = nil,
+        confirmedRealInterestCorrectionAmount: Double? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -202,6 +209,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         self.linkedQuotaYearMonthKey = linkedQuotaYearMonthKey
         self.transactionOrigin = transactionOrigin
         self.linkedEntityID = linkedEntityID ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
+        self.baseInstallmentRegisteredAmount = baseInstallmentRegisteredAmount.map { abs($0) }
+        self.projectedInstallmentCorrectionAmount = projectedInstallmentCorrectionAmount
+        self.confirmedRealInterestCorrectionAmount = confirmedRealInterestCorrectionAmount
         self.createdAt = createdAt
     }
 
@@ -253,7 +263,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         case recurrenceFrequency, isCanceledRecurringSeries, seriesGroupId
         case installmentIndex, installmentTotal, rawStatementLine, statementOccurrenceIndex
         case linkedContractId, linkedInvestmentId, linkedDebtId, linkedQuotaId
-        case linkedQuotaUnits, linkedQuotaYearMonthKey, transactionOrigin, linkedEntityID, createdAt
+        case linkedQuotaUnits, linkedQuotaYearMonthKey, transactionOrigin, linkedEntityID
+        case baseInstallmentRegisteredAmount, projectedInstallmentCorrectionAmount, confirmedRealInterestCorrectionAmount
+        case createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -314,6 +326,12 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         self.linkedEntityID = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linkedEntityID")))
             ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linked_entity_id")))
             ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
+        self.baseInstallmentRegisteredAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("baseInstallmentRegisteredAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("base_installment_registered_amount")))
+        self.projectedInstallmentCorrectionAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("projectedInstallmentCorrectionAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("projected_installment_correction_amount")))
+        self.confirmedRealInterestCorrectionAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("confirmedRealInterestCorrectionAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("confirmed_real_interest_correction_amount")))
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -378,6 +396,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(linkedQuotaYearMonthKey, forKey: .linkedQuotaYearMonthKey)
         try c.encodeIfPresent(transactionOrigin, forKey: .transactionOrigin)
         try c.encodeIfPresent(linkedEntityID, forKey: .linkedEntityID)
+        try c.encodeIfPresent(baseInstallmentRegisteredAmount, forKey: .baseInstallmentRegisteredAmount)
+        try c.encodeIfPresent(projectedInstallmentCorrectionAmount, forKey: .projectedInstallmentCorrectionAmount)
+        try c.encodeIfPresent(confirmedRealInterestCorrectionAmount, forKey: .confirmedRealInterestCorrectionAmount)
         try c.encode(createdAt, forKey: .createdAt)
     }
 }
