@@ -236,14 +236,20 @@ public final class FinancialDataStore: ObservableObject {
     private var isBatchLoading: Bool = false
     private var cachedTransactionsByYM: [Int: [FinancialTransaction]]? = nil
     private var cachedTransactionsByYear: [Int: [FinancialTransaction]]? = nil
+    private var cachedAccountsById: [UUID: BankAccount]? = nil
+    private var cachedCategoriesById: [UUID: CategoryItem]? = nil
     private var cachedLoanProjections: [UUID: LoanProjectionResult] = [:]
     private var cachedActiveProjectionSnapshot: (shadowedTxIds: Set<UUID>, projectedInstallmentAmounts: [UUID: Double], payoffTxIds: Set<UUID>)? = nil
     private var cachedKPISummaryByKey: [Int: UnifiedFinancialKPISummary] = [:]
     private var maxMaterializedRecurringDate: Date? = nil
+    private let diskPersistenceQueue = DispatchQueue(label: "br.com.finsense.ios.databasePersistence", qos: .utility)
+    private static let snapshotEncoder = JSONEncoder()
 
     public func invalidateDerivedCaches() {
         cachedTransactionsByYM = nil
         cachedTransactionsByYear = nil
+        cachedAccountsById = nil
+        cachedCategoriesById = nil
         cachedLoanProjections.removeAll(keepingCapacity: true)
         cachedActiveProjectionSnapshot = nil
         cachedKPISummaryByKey.removeAll(keepingCapacity: true)
@@ -376,8 +382,11 @@ public final class FinancialDataStore: ObservableObject {
             provisions: provisions,
             categoryQuotas: categoryQuotas
         )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            try? data.write(to: databaseFileURL, options: .atomic)
+        let targetURL = databaseFileURL
+        diskPersistenceQueue.async {
+            if let data = try? Self.snapshotEncoder.encode(snapshot) {
+                try? data.write(to: targetURL, options: .atomic)
+            }
         }
     }
 
@@ -389,12 +398,18 @@ public final class FinancialDataStore: ObservableObject {
 
     public func account(for id: UUID?) -> BankAccount? {
         guard let id else { return nil }
-        return accounts.first { $0.id == id }
+        if cachedAccountsById == nil {
+            cachedAccountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+        }
+        return cachedAccountsById?[id]
     }
 
     public func category(for id: UUID?) -> CategoryItem? {
         guard let id else { return nil }
-        return categories.first { $0.id == id }
+        if cachedCategoriesById == nil {
+            cachedCategoriesById = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+        }
+        return cachedCategoriesById?[id]
     }
 
     public func fallbackCategoryId(for type: TransactionType, matchingSubstring: String = "") -> UUID {

@@ -16,28 +16,28 @@ public struct LiquidGlassCardModifier: ViewModifier {
             .padding(padding)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
+                    .fill(colorScheme == .dark ? Color(hex: "#161B26").opacity(0.84) : Color.white.opacity(0.82))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(
                             stops: [
-                                .init(color: colorScheme == .dark ? Color.white.opacity(0.25) : Color.white.opacity(0.8), location: 0.0),
+                                .init(color: colorScheme == .dark ? Color.white.opacity(0.22) : Color.white.opacity(0.8), location: 0.0),
                                 .init(color: colorScheme == .dark ? Color.white.opacity(0.05) : Color.white.opacity(0.2), location: 0.6),
-                                .init(color: colorScheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.5), location: 1.0)
+                                .init(color: colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.5), location: 1.0)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        lineWidth: 1.2
+                        lineWidth: 1.0
                     )
             )
             .shadow(
-                color: colorScheme == .dark ? Color.black.opacity(0.4) : Color.black.opacity(0.06),
-                radius: 16,
+                color: colorScheme == .dark ? Color.black.opacity(0.22) : Color.black.opacity(0.05),
+                radius: 6,
                 x: 0,
-                y: 8
+                y: 3
             )
     }
 }

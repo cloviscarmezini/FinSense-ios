@@ -92,8 +92,10 @@ public enum AppFormatters {
         monthYearFormatter.string(from: date).capitalized
     }
 
+    private static let gregorianCalendar = Calendar(identifier: .gregorian)
+
     public static func yearString(_ date: Date) -> String {
-        let year = Calendar(identifier: .gregorian).component(.year, from: date)
+        let year = gregorianCalendar.component(.year, from: date)
         return String(year)
     }
 

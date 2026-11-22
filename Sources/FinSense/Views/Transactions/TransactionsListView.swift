@@ -655,8 +655,8 @@ public struct TransactionRow: View {
     public var onLongPress: (() -> Void)? = nil
 
     public var body: some View {
-        let cat = store.categories.first(where: { $0.id == transaction.categoryId })
-        let acc = store.accounts.first(where: { $0.id == transaction.accountId })
+        let cat = store.category(for: transaction.categoryId)
+        let acc = store.account(for: transaction.accountId)
         let projStatus = store.transactionProjectionStatus(for: transaction)
         let isFullPayoffTx = store.isPlannedAmortizationFullPayoff(transaction)
         let effectiveAmount = store.effectiveTransactionAmount(for: transaction)

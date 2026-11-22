@@ -185,7 +185,7 @@ public struct SettingsMainView: View {
             }
             .sheet(isPresented: $isAuthSheetPresented) {
                 AuthSheetView(authService: authService, baseURL: syncService.baseURLString) {
-                    syncService.performSync()
+                    syncService.evaluateInitialStatus()
                 }
             }
             .sheet(isPresented: $isResetSheetPresented) {

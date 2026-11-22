@@ -29,11 +29,18 @@ public final class CloudSyncService: ObservableObject {
 
     private var outboxQueue: [LocalSyncMutation] = []
     private let outboxFileURL: URL
+    private let outboxPersistenceQueue = DispatchQueue(label: "br.com.finsense.ios.outboxPersistence", qos: .utility)
+    private static let payloadEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+    private static let isoFormatter = ISO8601DateFormatter()
     private var debounceTimer: AnyCancellable? = nil
     private let networkMonitor = NWPathMonitor()
     private var isNetworkAvailable: Bool = true
     private var authCancellable: AnyCancellable? = nil
-    private var lastAppEntrySyncDate: Date? = nil
 
     public weak var store: FinancialDataStore?
     public weak var authService: AuthService? {
@@ -60,11 +67,7 @@ public final class CloudSyncService: ObservableObject {
                 outboxQueue.removeAll()
                 saveOutboxQueue()
             }
-            if !isEnabled {
-                isEnabled = true
-            }
             evaluateInitialStatus()
-            scheduleSync(delaySeconds: 0.5)
         } else {
             lastSyncedUserId = ""
             evaluateInitialStatus()
@@ -141,14 +144,10 @@ public final class CloudSyncService: ObservableObject {
         networkMonitor.start(queue: queue)
     }
 
-    /// Sincronização disparada exclusivamente ao entrar no aplicativo (com throttle de 30s)
+    /// Mantido apenas por compatibilidade; a sincronização agora é estritamente manual
+    /// (via Configurações ou pull-to-refresh no início do Dashboard).
     public func syncOnAppEntry() {
-        guard canSync else { return }
-        if let last = lastAppEntrySyncDate, Date().timeIntervalSince(last) < 30.0 {
-            return
-        }
-        lastAppEntrySyncDate = Date()
-        scheduleSync(delaySeconds: 0.6)
+        evaluateInitialStatus()
     }
 
     public func recordLocalMutation<T: Codable>(
@@ -157,18 +156,11 @@ public final class CloudSyncService: ObservableObject {
         operation: SyncOperation,
         entity: T? = nil
     ) {
-        let isAuth = authService?.isAuthenticated ?? false
-        guard isEnabled || isAuth else { return }
-        if isAuth && !isEnabled {
-            isEnabled = true
-        }
+        guard isEnabled else { return }
 
         let payloadJSON: String? = {
             guard let entity, operation != .delete else { return nil }
-            let encoder = JSONEncoder()
-            encoder.keyEncodingStrategy = .convertToSnakeCase
-            encoder.dateEncodingStrategy = .iso8601
-            guard let data = try? encoder.encode(entity),
+            guard let data = try? Self.payloadEncoder.encode(entity),
                   let str = String(data: data, encoding: .utf8) else { return nil }
             return str
         }()
@@ -185,9 +177,6 @@ public final class CloudSyncService: ObservableObject {
         saveOutboxQueue()
         pendingMutationsCount = outboxQueue.count
         syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
-        if canSync {
-            scheduleSync(delaySeconds: 1.5)
-        }
     }
 
     public func recordLocalMutation(
@@ -199,19 +188,21 @@ public final class CloudSyncService: ObservableObject {
     }
 
     public func scheduleSync(delaySeconds: Double) {
-        let isAuth = authService?.isAuthenticated ?? false
-        guard isEnabled, isNetworkAvailable, isAuth else { return }
-        debounceTimer?.cancel()
-        debounceTimer = Just(())
-            .delay(for: .seconds(delaySeconds), scheduler: RunLoop.main)
-            .sink { [weak self] in
-                self?.performSync()
-            }
+        // Sincronização automática desativada: apenas manual pelas Configurações ou pull-to-refresh no Dashboard.
     }
 
     public func performSync() {
+        Task {
+            await performManualSync()
+        }
+    }
+
+    public func performManualSync() async {
         let isAuth = authService?.isAuthenticated ?? false
-        guard isEnabled, isAuth else { syncStatus = .disabled; return }
+        guard isEnabled, isAuth else {
+            syncStatus = .disabled
+            return
+        }
         guard isNetworkAvailable else {
             syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Sem internet")
             return
@@ -220,100 +211,98 @@ public final class CloudSyncService: ObservableObject {
 
         isSyncing = true
         syncStatus = .syncing
-
-        Task {
-            await executeSyncPushPull()
-        }
+        await executeSyncPushPull()
+        isSyncing = false
     }
 
-    private func executeSyncPushPull() async {
-        guard let store else { isSyncing = false; return }
+    private func executeSyncPushPull(hasRetriedAuth: Bool = false) async {
+        guard let store else { return }
 
-        let isLocalEmpty = store.transactions.isEmpty && store.accounts.isEmpty && store.categories.isEmpty && store.contracts.isEmpty && store.investments.isEmpty && store.debts.isEmpty
-        let effectiveSinceRevision: Int64
-        if isLocalEmpty {
-            effectiveSinceRevision = 0
-        } else {
-            effectiveSinceRevision = Int64(lastServerRevision)
-        }
+        var remainingBatches = 20
+        while remainingBatches > 0 {
+            remainingBatches -= 1
 
-        let batchToSend = Array(outboxQueue.prefix(250))
-        let payload = SyncPushPullRequest(
-            clientId: clientId,
-            sinceRevision: effectiveSinceRevision,
-            mutations: batchToSend.map { mut in
-                SyncMutationDTO(
-                    mutationId: mut.id,
-                    entityName: mut.entityName,
-                    entityId: mut.entityId,
-                    operation: mut.operation.rawValue,
-                    updatedAt: ISO8601DateFormatter().string(from: mut.updatedAt),
-                    payload: mut.payloadJSON.flatMap { try? JSONDecoder().decode([String: AnyCodableValue].self, from: Data($0.utf8)) }
-                )
-            }
-        )
+            let isLocalEmpty = store.transactions.isEmpty && store.accounts.isEmpty && store.categories.isEmpty && store.contracts.isEmpty && store.investments.isEmpty && store.debts.isEmpty
+            let effectiveSinceRevision: Int64 = isLocalEmpty ? 0 : Int64(lastServerRevision)
 
-        // Garante token renovado antes da sincronização
-        let currentToken = await authService?.ensureFreshToken(baseURL: baseURLString) ?? authService?.accessToken
-
-        do {
-            let response = try await BackendAPIClient.shared.pushPull(
-                baseURL: baseURLString,
-                requestPayload: payload,
-                token: currentToken
+            let batchToSend = Array(outboxQueue.prefix(250))
+            let payload = SyncPushPullRequest(
+                clientId: clientId,
+                sinceRevision: effectiveSinceRevision,
+                mutations: batchToSend.map { mut in
+                    SyncMutationDTO(
+                        mutationId: mut.id,
+                        entityName: mut.entityName,
+                        entityId: mut.entityId,
+                        operation: mut.operation.rawValue,
+                        updatedAt: Self.isoFormatter.string(from: mut.updatedAt),
+                        payload: mut.payloadJSON.flatMap { try? JSONDecoder().decode([String: AnyCodableValue].self, from: Data($0.utf8)) }
+                    )
+                }
             )
 
-            let ackIds = response.acknowledgedMutationIds
-            let processedSet: Set<UUID> = Set(ackIds)
-            let previousOutboxCount = outboxQueue.count
-            outboxQueue.removeAll { (item: LocalSyncMutation) in processedSet.contains(item.id) }
-            saveOutboxQueue()
-            pendingMutationsCount = outboxQueue.count
+            // Garante token renovado antes da sincronização
+            let currentToken = await authService?.ensureFreshToken(baseURL: baseURLString) ?? authService?.accessToken
 
-            if let deltas = response.deltas {
-                applyDeltasToStore(deltas, tombstones: response.tombstones ?? [], into: store)
-            }
-            if let changes = response.serverChanges, !changes.isEmpty {
-                applyServerChanges(changes, into: store)
-            }
+            do {
+                let response = try await BackendAPIClient.shared.pushPull(
+                    baseURL: baseURLString,
+                    requestPayload: payload,
+                    token: currentToken
+                )
 
-            let serverIsEmpty = response.latestRevision == 0 && (response.serverChanges?.isEmpty ?? true) && (response.deltas?.isEmpty ?? true)
-            let hasLocalData = !store.transactions.isEmpty || !store.accounts.isEmpty || !store.categories.isEmpty || !store.contracts.isEmpty || !store.investments.isEmpty || !store.debts.isEmpty || !store.provisions.isEmpty || !store.categoryQuotas.isEmpty
+                let ackIds = response.acknowledgedMutationIds
+                let processedSet: Set<UUID> = Set(ackIds)
+                let previousOutboxCount = outboxQueue.count
+                outboxQueue.removeAll { (item: LocalSyncMutation) in processedSet.contains(item.id) }
+                saveOutboxQueue()
+                pendingMutationsCount = outboxQueue.count
 
-            if serverIsEmpty && hasLocalData && outboxQueue.isEmpty && lastServerRevision == 0 && !hasSeededInitialData {
-                print("⚡️ [FinSense-iOS] Servidor vazio detectado com dados locais: realizando auto-seed de envio inicial...")
-                hasSeededInitialData = true
-                enqueueAllLocalData()
-            }
+                if let deltas = response.deltas {
+                    applyDeltasToStore(deltas, tombstones: response.tombstones ?? [], into: store)
+                }
+                if let changes = response.serverChanges, !changes.isEmpty {
+                    applyServerChanges(changes, into: store)
+                }
 
-            lastServerRevision = Int(response.latestRevision)
-            let now = Date()
-            lastSyncDate = now
+                let serverIsEmpty = response.latestRevision == 0 && (response.serverChanges?.isEmpty ?? true) && (response.deltas?.isEmpty ?? true)
+                let hasLocalData = !store.transactions.isEmpty || !store.accounts.isEmpty || !store.categories.isEmpty || !store.contracts.isEmpty || !store.investments.isEmpty || !store.debts.isEmpty || !store.provisions.isEmpty || !store.categoryQuotas.isEmpty
 
-            if outboxQueue.isEmpty {
-                syncStatus = .synced(lastSync: now)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            } else if outboxQueue.count < previousOutboxCount {
-                // Houve redução na fila: continua para descarregar o lote seguinte
-                scheduleSync(delaySeconds: 1.0)
-            } else {
-                // Nenhuma mutação foi confirmada neste ciclo: não entra em loop, aguarda próxima ação
-                syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
+                if serverIsEmpty && hasLocalData && outboxQueue.isEmpty && lastServerRevision == 0 && !hasSeededInitialData {
+                    print("⚡️ [FinSense-iOS] Servidor vazio detectado com dados locais: realizando auto-seed de envio inicial...")
+                    hasSeededInitialData = true
+                    enqueueAllLocalData()
+                }
+
+                lastServerRevision = Int(response.latestRevision)
+                let now = Date()
+                lastSyncDate = now
+
+                if outboxQueue.isEmpty {
+                    syncStatus = .synced(lastSync: now)
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    break
+                } else if outboxQueue.count < previousOutboxCount {
+                    // Houve redução na fila: continua para descarregar o lote seguinte dentro desta sync manual
+                    continue
+                } else {
+                    syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Alterações pendentes")
+                    break
+                }
+            } catch let err as URLError where err.code == .userAuthenticationRequired {
+                if !hasRetriedAuth, let auth = authService, await auth.renewTokens(baseURL: baseURLString) {
+                    print("⚡️ [CloudSyncService] Token renovado após 401. Tentando novamente...")
+                    await executeSyncPushPull(hasRetriedAuth: true)
+                    return
+                } else {
+                    syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
+                    break
+                }
+            } catch {
+                syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Servidor indisponível")
+                break
             }
-        } catch let err as URLError where err.code == .userAuthenticationRequired {
-            // Tenta renovar o token e reagendar uma única tentativa
-            if let auth = authService, await auth.renewTokens(baseURL: baseURLString) {
-                print("⚡️ [CloudSyncService] Token renovado após 401. Reagendando tentativa...")
-                scheduleSync(delaySeconds: 1.0)
-            } else {
-                syncStatus = .authError(message: "Sessão expirada. Faça login novamente.")
-            }
-        } catch {
-            // Degradação suave: servidor fora do ar ou timeout não trava o app
-            syncStatus = .outOfSync(pendingCount: outboxQueue.count, reason: "Servidor indisponível")
         }
-
-        isSyncing = false
     }
 
     public func enqueueAllLocalData() {
@@ -582,8 +571,12 @@ public final class CloudSyncService: ObservableObject {
     }
 
     private func saveOutboxQueue() {
-        guard let data = try? JSONEncoder().encode(outboxQueue) else { return }
-        try? data.write(to: outboxFileURL, options: .atomic)
+        let snapshot = outboxQueue
+        let targetURL = outboxFileURL
+        outboxPersistenceQueue.async {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: targetURL, options: .atomic)
+        }
     }
 
     private func loadOutboxQueue() {

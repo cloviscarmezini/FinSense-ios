@@ -78,41 +78,35 @@ public struct LiquidNavigationBar: View {
                 }
             }
 
-            // Cloud Sync Indicator Pill (Apenas quando autenticado)
+            // Cloud Sync Indicator Pill (passivo: apenas exibe status)
             if syncService.authService?.isAuthenticated == true {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    syncService.performSync()
-                } label: {
-                    HStack(spacing: 6) {
-                        if syncService.isSyncing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: syncService.syncStatus.iconSymbol)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(syncStatusColor)
-                        }
-
-                        if syncService.pendingMutationsCount > 0 {
-                            Text("\(syncService.pendingMutationsCount)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(Color.primary)
-                        }
+                HStack(spacing: 6) {
+                    if syncService.isSyncing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: syncService.syncStatus.iconSymbol)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(syncStatusColor)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        Capsule()
-                            .fill(.ultraThinMaterial)
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.3), lineWidth: 0.8)
-                    )
+
+                    if syncService.pendingMutationsCount > 0 {
+                        Text("\(syncService.pendingMutationsCount)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.primary)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.8)
+                )
             }
 
             if let trailingIcon, let trailingAction {

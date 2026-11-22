@@ -21,41 +21,8 @@ public struct ContentView: View {
 
     public var body: some View {
         ZStack {
-            ZStack(alignment: .bottom) {
-                // Conteúdo da Aba Ativa
-                Group {
-                    switch selectedTab {
-                    case .dashboard:
-                        DashboardView(
-                            store: store,
-                            syncService: syncService,
-                            authService: authService,
-                            selectedTab: $selectedTab
-                        )
-                    case .transactions:
-                        TransactionsListView(
-                            store: store,
-                            syncService: syncService,
-                            authService: authService
-                        )
-                    case .financeHub:
-                        FinanceHubMainView(
-                            store: store,
-                            syncService: syncService
-                        )
-                    case .settings:
-                        SettingsMainView(
-                            store: store,
-                            syncService: syncService,
-                            authService: authService
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // Barra Flutuante Liquid Glass
-                LiquidTabBar(selectedTab: $selectedTab)
-            }
+            nativeLiquidTabView
+                .tint(Color(hex: "#0284C7"))
 
             // Splash Screen com Ícone Oficial e Animação Fluida
             if isShowingSplash {
@@ -73,15 +40,60 @@ public struct ContentView: View {
             store.cloudSyncService = syncService
             syncService.store = store
             syncService.authService = authService
-            if authService.isAuthenticated {
-                syncService.isEnabled = true
-                syncService.syncOnAppEntry()
-            }
+            syncService.evaluateInitialStatus()
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active && authService.isAuthenticated {
-                syncService.syncOnAppEntry()
+    }
+
+    @ViewBuilder
+    private var nativeLiquidTabView: some View {
+        let baseTabView = TabView(selection: $selectedTab) {
+            DashboardView(
+                store: store,
+                syncService: syncService,
+                authService: authService,
+                selectedTab: $selectedTab
+            )
+            .background(NativeTabBarSwipeInstaller(selectedTab: $selectedTab).frame(width: 0, height: 0))
+            .tabItem {
+                Label(AppTab.dashboard.title, systemImage: AppTab.dashboard.iconSymbol)
             }
+            .tag(AppTab.dashboard)
+
+            TransactionsListView(
+                store: store,
+                syncService: syncService,
+                authService: authService
+            )
+            .tabItem {
+                Label(AppTab.transactions.title, systemImage: AppTab.transactions.iconSymbol)
+            }
+            .tag(AppTab.transactions)
+
+            FinanceHubMainView(
+                store: store,
+                syncService: syncService
+            )
+            .tabItem {
+                Label(AppTab.financeHub.title, systemImage: AppTab.financeHub.iconSymbol)
+            }
+            .tag(AppTab.financeHub)
+
+            SettingsMainView(
+                store: store,
+                syncService: syncService,
+                authService: authService
+            )
+            .tabItem {
+                Label(AppTab.settings.title, systemImage: AppTab.settings.iconSymbol)
+            }
+            .tag(AppTab.settings)
+        }
+
+        if #available(iOS 26.0, *) {
+            baseTabView
+                .tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            baseTabView
         }
     }
 }

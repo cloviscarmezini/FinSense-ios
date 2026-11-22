@@ -90,11 +90,12 @@ public struct DashboardView: View {
                         // Saúde Financeira
                         FinancialHealthCard(store: store, selectedMonth: store.selectedMonth)
                             .padding(.horizontal, 20)
-
-                        // Espaçador inferior para a LiquidTabBar flutuante
-                        Color.clear.frame(height: 80)
+                            .padding(.bottom, 24)
                     }
                     .padding(.top, 10)
+                }
+                .refreshable {
+                    await syncService.performManualSync()
                 }
             }
             .sheet(isPresented: $isAddTransactionSheetPresented) {
@@ -217,35 +218,29 @@ public struct DashboardView: View {
                 }
             }
 
-            // Indicador de Sync (apenas quando logado)
+            // Indicador de Sync (passivo: sincronização manual via Ajustes ou pull-to-refresh no início do Dashboard)
             if authService.isAuthenticated {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    syncService.performSync()
-                } label: {
-                    HStack(spacing: 6) {
-                        if syncService.isSyncing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle())
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: syncService.syncStatus.iconSymbol)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(syncStatusColor)
-                        }
-
-                        if syncService.pendingMutationsCount > 0 {
-                            Text("\(syncService.pendingMutationsCount)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color.primary)
-                        }
+                HStack(spacing: 6) {
+                    if syncService.isSyncing {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: syncService.syncStatus.iconSymbol)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(syncStatusColor)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(.ultraThinMaterial))
-                    .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+
+                    if syncService.pendingMutationsCount > 0 {
+                        Text("\(syncService.pendingMutationsCount)")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.primary)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.ultraThinMaterial))
+                .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
             }
 
             // Botão Nova Transação
