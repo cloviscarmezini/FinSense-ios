@@ -183,7 +183,8 @@ public struct TransactionsListView: View {
                                                 onRequestDelete: {
                                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                                     transactionPendingDeletion = tx
-                                                }
+                                                },
+                                                isPendingDeletionConfirmation: transactionPendingDeletion?.id == tx.id
                                             )
                                             .padding(.horizontal, 20)
                                         }
@@ -628,10 +629,12 @@ public struct TransactionRow: View {
     public var onTogglePaid: (() -> Void)? = nil
     public var onLongPress: (() -> Void)? = nil
     public var onRequestDelete: (() -> Void)? = nil
+    public var isPendingDeletionConfirmation: Bool = false
 
     @State private var swipeOffset: CGFloat = 0
     @State private var isDeleteRevealed: Bool = false
     @State private var isDraggingHorizontally: Bool = false
+    @State private var suppressPayButtonUntil: Date = .distantPast
 
     public var body: some View {
         let cat = store.category(for: transaction.categoryId)
@@ -644,33 +647,6 @@ public struct TransactionRow: View {
         let isEligibleForBulk = !transaction.isPaid && !isShadowed
 
         ZStack(alignment: .trailing) {
-            // Botão de Exclusão revelado ao arrastar para a esquerda
-            if !isBulkSelectionMode && onRequestDelete != nil && swipeOffset < -4 {
-                Button {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                        swipeOffset = 0
-                        isDeleteRevealed = false
-                    }
-                    onRequestDelete?()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: 16, weight: .bold))
-                        Text("Excluir")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .foregroundStyle(.white)
-                    .frame(width: 80)
-                    .frame(maxHeight: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(hex: "#EF4444"))
-                    )
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
-            }
-
             LiquidGlassCard(cornerRadius: 16, padding: 12) {
                 HStack(spacing: 12) {
                     if isBulkSelectionMode {
@@ -779,7 +755,10 @@ public struct TransactionRow: View {
                                     .strikethrough(true, color: .secondary)
                                     .foregroundStyle(Color.secondary)
                             } else if !isBulkSelectionMode, let onTogglePaid {
-                                Button(action: onTogglePaid) {
+                                Button {
+                                    guard !isDraggingHorizontally, Date() > suppressPayButtonUntil else { return }
+                                    onTogglePaid()
+                                } label: {
                                     let isPaid = transaction.isPaid
                                     let labelText = isPaid
                                         ? (transaction.type == .expense ? "Pago" : "Recebido")
@@ -847,6 +826,7 @@ public struct TransactionRow: View {
                         let dy = value.translation.height
                         guard isDraggingHorizontally || abs(dx) > abs(dy) * 1.3 else { return }
                         isDraggingHorizontally = true
+                        suppressPayButtonUntil = Date().addingTimeInterval(0.35)
                         let base: CGFloat = isDeleteRevealed ? -88 : 0
                         swipeOffset = max(-220, min(0, base + dx))
                     }
@@ -854,12 +834,11 @@ public struct TransactionRow: View {
                         guard !isBulkSelectionMode, onRequestDelete != nil else { return }
                         let wasDraggingHorizontally = isDraggingHorizontally
                         isDraggingHorizontally = false
+                        if wasDraggingHorizontally {
+                            suppressPayButtonUntil = Date().addingTimeInterval(0.35)
+                        }
                         guard wasDraggingHorizontally || swipeOffset < 0 else { return }
                         if swipeOffset <= -165 {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                swipeOffset = 0
-                                isDeleteRevealed = false
-                            }
                             onRequestDelete?()
                         } else if swipeOffset <= -42 {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
@@ -874,6 +853,38 @@ public struct TransactionRow: View {
                         }
                     }
             )
+
+            // Botão de Exclusão acima da área original do card na faixa direita para receber o toque sem conflito
+            if !isBulkSelectionMode && onRequestDelete != nil && swipeOffset < -4 {
+                Button {
+                    onRequestDelete?()
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 16, weight: .bold))
+                        Text("Excluir")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 80)
+                    .frame(maxHeight: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(hex: "#EF4444"))
+                    )
+                }
+                .buttonStyle(.plain)
+                .zIndex(2)
+                .transition(.opacity)
+            }
+        }
+        .onChange(of: isPendingDeletionConfirmation) { wasConfirming, isNowConfirming in
+            if wasConfirming && !isNowConfirming {
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    swipeOffset = 0
+                    isDeleteRevealed = false
+                }
+            }
         }
         .opacity(isBulkSelectionMode && !isEligibleForBulk ? 0.55 : 1.0)
     }
