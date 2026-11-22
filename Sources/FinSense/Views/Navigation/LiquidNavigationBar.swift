@@ -147,3 +147,99 @@ public struct LiquidNavigationBar: View {
         }
     }
 }
+
+/// Barra dedicada e espaçosa para navegação entre meses/anos no Dashboard e no Extrato.
+public struct PeriodNavigatorBar: View {
+    public let title: String
+    public let isCurrentPeriod: Bool
+    public let onPrevious: () -> Void
+    public let onNext: () -> Void
+    public let onSelectPeriod: () -> Void
+    public let onJumpToToday: () -> Void
+
+    public init(
+        title: String,
+        isCurrentPeriod: Bool,
+        onPrevious: @escaping () -> Void,
+        onNext: @escaping () -> Void,
+        onSelectPeriod: @escaping () -> Void,
+        onJumpToToday: @escaping () -> Void
+    ) {
+        self.title = title
+        self.isCurrentPeriod = isCurrentPeriod
+        self.onPrevious = onPrevious
+        self.onNext = onNext
+        self.onSelectPeriod = onSelectPeriod
+        self.onJumpToToday = onJumpToToday
+    }
+
+    public var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onPrevious()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelectPeriod()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 15, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(Color(hex: "#0284C7"))
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .padding(.horizontal, 14)
+                .background(
+                    Capsule()
+                        .fill(Color(hex: "#0284C7").opacity(0.14))
+                        .overlay(Capsule().stroke(Color(hex: "#0284C7").opacity(0.28), lineWidth: 0.9))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onNext()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+
+            if !isCurrentPeriod {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onJumpToToday()
+                } label: {
+                    Text("Hoje")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(hex: "#0284C7"))
+                        .frame(height: 38)
+                        .padding(.horizontal, 14)
+                        .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+}

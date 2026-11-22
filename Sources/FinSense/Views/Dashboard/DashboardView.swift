@@ -117,147 +117,123 @@ public struct DashboardView: View {
 
     // MARK: - Header
     private var headerSection: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
                 Text("FinSense")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.primary)
 
-                HStack(spacing: 6) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        if isAnnual {
-                            store.changeYear(by: -1)
-                        } else {
-                            store.changeMonth(by: -1)
-                        }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.secondary)
-                            .padding(6)
-                            .background(Circle().fill(Color.primary.opacity(0.06)))
-                    }
-                    .buttonStyle(.plain)
+                Spacer()
 
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        isMonthPickerPresented = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(isAnnual ? "Ano \(yearString)" : AppFormatters.monthYear(store.selectedMonth))
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color(hex: "#0284C7"))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Color(hex: "#0284C7"))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color(hex: "#0284C7").opacity(0.12)))
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        if isAnnual {
-                            store.changeYear(by: 1)
-                        } else {
-                            store.changeMonth(by: 1)
-                        }
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.secondary)
-                            .padding(6)
-                            .background(Circle().fill(Color.primary.opacity(0.06)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Spacer()
-
-            // Atalho global de Cenário (Real Base vs Com Planejamento)
-            if store.hasAnyAmortizationPlan {
-                Menu {
-                    ForEach(BudgetProjectionScenario.allCases) { scenario in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            store.budgetProjectionScenario = scenario
-                        } label: {
-                            HStack {
-                                Label(scenario.rawValue, systemImage: scenario.iconSymbol)
-                                if store.budgetProjectionScenario == scenario {
-                                    Image(systemName: "checkmark")
+                // Atalho global de Cenário (Real Base vs Com Planejamento)
+                if store.hasAnyAmortizationPlan {
+                    Menu {
+                        ForEach(BudgetProjectionScenario.allCases) { scenario in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                store.budgetProjectionScenario = scenario
+                            } label: {
+                                HStack {
+                                    Label(scenario.rawValue, systemImage: scenario.iconSymbol)
+                                    if store.budgetProjectionScenario == scenario {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: store.budgetProjectionScenario.iconSymbol)
+                                .font(.system(size: 11, weight: .bold))
+                            Text(store.budgetProjectionScenario == .withPlanning ? "Com Plano" : "Real (Base)")
+                                .font(.system(size: 10.5, weight: .bold))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .foregroundStyle(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6") : Color.secondary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.16) : Color.primary.opacity(0.06))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.35) : Color.white.opacity(0.2), lineWidth: 0.8)
+                        )
                     }
+                }
+
+                // Indicador de Sync (passivo: sincronização manual via Ajustes ou pull-to-refresh no início do Dashboard)
+                if authService.isAuthenticated {
+                    HStack(spacing: 6) {
+                        if syncService.isSyncing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle())
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: syncService.syncStatus.iconSymbol)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(syncStatusColor)
+                        }
+
+                        if syncService.pendingMutationsCount > 0 {
+                            Text("\(syncService.pendingMutationsCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.primary)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(.ultraThinMaterial))
+                    .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
+                }
+
+                // Botão Nova Transação
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    isAddTransactionSheetPresented = true
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: store.budgetProjectionScenario.iconSymbol)
-                            .font(.system(size: 11, weight: .bold))
-                        Text(store.budgetProjectionScenario == .withPlanning ? "Com Plano" : "Real (Base)")
-                            .font(.system(size: 10.5, weight: .bold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8, weight: .bold))
-                    }
-                    .foregroundStyle(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6") : Color.secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.16) : Color.primary.opacity(0.06))
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(store.budgetProjectionScenario == .withPlanning ? Color(hex: "#8B5CF6").opacity(0.35) : Color.white.opacity(0.2), lineWidth: 0.8)
-                    )
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(9)
+                        .background(Circle().fill(Color(hex: "#0284C7")))
+                        .shadow(color: Color(hex: "#0284C7").opacity(0.4), radius: 6, x: 0, y: 3)
                 }
+                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 20)
 
-            // Indicador de Sync (passivo: sincronização manual via Ajustes ou pull-to-refresh no início do Dashboard)
-            if authService.isAuthenticated {
-                HStack(spacing: 6) {
-                    if syncService.isSyncing {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                            .scaleEffect(0.7)
+            // Barra dedicada de troca de Mês / Ano (largura total para nunca achatar)
+            PeriodNavigatorBar(
+                title: isAnnual ? "Ano \(yearString)" : AppFormatters.monthYear(store.selectedMonth),
+                isCurrentPeriod: isAnnual
+                    ? store.calendar.component(.year, from: store.selectedMonth) == store.calendar.component(.year, from: Date())
+                    : store.isInMonth(Date(), monthReference: store.selectedMonth),
+                onPrevious: {
+                    if isAnnual {
+                        store.changeYear(by: -1)
                     } else {
-                        Image(systemName: syncService.syncStatus.iconSymbol)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(syncStatusColor)
+                        store.changeMonth(by: -1)
                     }
-
-                    if syncService.pendingMutationsCount > 0 {
-                        Text("\(syncService.pendingMutationsCount)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.primary)
+                },
+                onNext: {
+                    if isAnnual {
+                        store.changeYear(by: 1)
+                    } else {
+                        store.changeMonth(by: 1)
                     }
+                },
+                onSelectPeriod: {
+                    isMonthPickerPresented = true
+                },
+                onJumpToToday: {
+                    store.selectedMonth = Date()
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Capsule().fill(.ultraThinMaterial))
-                .overlay(Capsule().stroke(Color.white.opacity(0.25), lineWidth: 0.8))
-            }
-
-            // Botão Nova Transação
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                isAddTransactionSheetPresented = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(9)
-                    .background(Circle().fill(Color(hex: "#0284C7")))
-                    .shadow(color: Color(hex: "#0284C7").opacity(0.4), radius: 6, x: 0, y: 3)
-            }
-            .buttonStyle(.plain)
+            )
         }
-        .padding(.horizontal, 20)
     }
 
     // MARK: - Period Mode Selector
