@@ -72,7 +72,7 @@
       <EnvironmentVariables>
          <EnvironmentVariable
             key = "API_BASE_URL"
-            value = "https://api.finsense.com.br/v1"
+            value = "http://192.168.68.66:8080/api/v1"
             isEnabled = "YES">
          </EnvironmentVariable>
          <EnvironmentVariable
