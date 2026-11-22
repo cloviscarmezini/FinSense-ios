@@ -18,6 +18,7 @@ public struct TransactionDetailSheet: View {
     @State private var selectedAccountId: UUID = UUID()
     @State private var recurrenceMode: TransactionRecurrenceMode = .single
     @State private var installmentTotal: Int = 12
+    @State private var showDeleteConfirmation: Bool = false
 
     public init(
         store: FinancialDataStore,
@@ -132,9 +133,37 @@ public struct TransactionDetailSheet: View {
                     TextField("Detalhes adicionais (opcional)", text: $details, axis: .vertical)
                         .lineLimit(2...4)
                 }
+
+                if editingTransaction != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showDeleteConfirmation = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Label("Excluir Transação", systemImage: "trash.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle(editingTransaction != nil ? "Editar Lançamento" : "Nova Transação")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Excluir Transação?", isPresented: $showDeleteConfirmation) {
+                Button("Excluir", role: .destructive) {
+                    if let editing = editingTransaction {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        store.deleteTransaction(editing.id)
+                    }
+                    dismiss()
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Deseja realmente excluir \"\(name)\"? Esta ação não pode ser desfeita.")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }

@@ -69,35 +69,38 @@ public struct TransactionsListView: View {
                     // Cards de Resumo Rápido do Filtro
                     filterSummaryCards
 
-                    // Pílulas Deslizantes de Filtro
-                    HStack(spacing: 8) {
-                        ForEach(TransactionFilterTab.allCases) { tab in
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    selectedFilter = tab
-                                }
-                            } label: {
-                                Text(tab.rawValue)
-                                    .font(.system(size: 13, weight: selectedFilter == tab ? .bold : .medium))
-                                    .foregroundStyle(selectedFilter == tab ? .white : Color.primary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 7)
-                                    .background {
-                                        if selectedFilter == tab {
-                                            Capsule()
-                                                .fill(Color(hex: "#0284C7"))
-                                        } else {
-                                            Capsule()
-                                                .fill(.ultraThinMaterial)
-                                                .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.8))
-                                        }
+                    // Pílulas Deslizantes de Filtro (Scroll horizontal para nunca achatar)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(TransactionFilterTab.allCases) { tab in
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        selectedFilter = tab
                                     }
+                                } label: {
+                                    Text(tab.rawValue)
+                                        .font(.system(size: 13, weight: selectedFilter == tab ? .bold : .medium))
+                                        .foregroundStyle(selectedFilter == tab ? .white : Color.primary)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 7)
+                                        .background {
+                                            if selectedFilter == tab {
+                                                Capsule()
+                                                    .fill(Color(hex: "#0284C7"))
+                                            } else {
+                                                Capsule()
+                                                    .fill(.ultraThinMaterial)
+                                                    .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 0.8))
+                                            }
+                                        }
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
 
                     // Barra de Seleção em Massa (ativada ao segurar uma transação)
                     if isBulkSelectionMode {
@@ -626,9 +629,9 @@ public struct TransactionRow: View {
     public var onLongPress: (() -> Void)? = nil
     public var onRequestDelete: (() -> Void)? = nil
 
-    @State private var ignoreNextTapFromLongPress: Bool = false
     @State private var swipeOffset: CGFloat = 0
     @State private var isDeleteRevealed: Bool = false
+    @State private var isDraggingHorizontally: Bool = false
 
     public var body: some View {
         let cat = store.category(for: transaction.categoryId)
@@ -680,150 +683,133 @@ public struct TransactionRow: View {
                                              : Color.secondary.opacity(0.3))
                     }
 
-                    Button {
-                        if ignoreNextTapFromLongPress {
-                            ignoreNextTapFromLongPress = false
-                            return
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill((isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6")).opacity(0.18))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: isFullPayoffTx ? "checkmark.seal.fill" : (cat?.iconSymbol ?? "tag.fill"))
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6"))
                         }
-                        if isDeleteRevealed {
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                swipeOffset = 0
-                                isDeleteRevealed = false
-                            }
-                            return
-                        }
-                        onTap()
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill((isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6")).opacity(0.18))
-                                    .frame(width: 40, height: 40)
-                                Image(systemName: isFullPayoffTx ? "checkmark.seal.fill" : (cat?.iconSymbol ?? "tag.fill"))
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(isFullPayoffTx ? Color(hex: "#10B981") : Color(hex: cat?.colorHex ?? "#3B82F6"))
-                            }
 
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(transaction.name)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(isShadowed ? Color.secondary : (isFullPayoffTx ? Color(hex: "#10B981") : Color.primary))
-                                    .strikethrough(isShadowed, color: .secondary)
-                                    .lineLimit(1)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(transaction.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(isShadowed ? Color.secondary : (isFullPayoffTx ? Color(hex: "#10B981") : Color.primary))
+                                .strikethrough(isShadowed, color: .secondary)
+                                .lineLimit(1)
 
-                                HStack(spacing: 6) {
-                                    if let acc {
-                                        Text(acc.name)
-                                            .font(.system(size: 11))
-                                            .foregroundStyle(Color.secondary)
-                                    }
-
-                                    if let badge = transaction.installmentBadge {
-                                        Text(badge)
-                                            .font(.system(size: 9, weight: .bold))
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(Capsule().fill(Color.primary.opacity(0.08)))
-                                            .foregroundStyle(Color.secondary)
-                                    }
-
-                                    if isFullPayoffTx {
-                                        Text("Liquidação Planejada (Quitação Total)")
-                                            .font(.system(size: 9, weight: .heavy))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 1.5)
-                                            .background(Capsule().fill(Color(hex: "#10B981").opacity(0.22)))
-                                            .foregroundStyle(Color(hex: "#10B981"))
-                                    } else if projStatus == .pendingAmortization {
-                                        Text("Amortização Planejada")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 1.5)
-                                            .background(Capsule().fill(Color(hex: "#8B5CF6").opacity(0.18)))
-                                            .foregroundStyle(Color(hex: "#8B5CF6"))
-                                    } else if isShadowed {
-                                        Text("Suprimida pelo Plano (R$ 0,00)")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 1.5)
-                                            .background(Capsule().fill(Color(hex: "#10B981").opacity(0.16)))
-                                            .foregroundStyle(Color(hex: "#10B981"))
-                                    } else if !transaction.isPaid {
-                                        Text("Pendente")
-                                            .font(.system(size: 9, weight: .bold))
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(Capsule().fill(Color(hex: "#F59E0B").opacity(0.18)))
-                                            .foregroundStyle(Color(hex: "#F59E0B"))
-                                    }
-                                }
-
-                                if let breakdown = correctionBreakdown {
-                                    if let confirmed = breakdown.confirmedRealCorrectionAmount, transaction.isPaid {
-                                        Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Juros/Correção Efetivada: +\(AppFormatters.currency(confirmed))")
-                                            .font(.system(size: 9.5, weight: .semibold))
-                                            .foregroundStyle(Color(hex: "#10B981"))
-                                            .lineLimit(1)
-                                    } else {
-                                        Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Projeção (+\(breakdown.futureMonthStep)m): +\(AppFormatters.currency(breakdown.projectedCorrectionAmount))")
-                                            .font(.system(size: 9.5, weight: .semibold))
-                                            .foregroundStyle(Color(hex: "#F59E0B"))
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-
-                            Spacer(minLength: 8)
-
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text(AppFormatters.currency(effectiveAmount))
-                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(
-                                        isShadowed
-                                            ? Color(hex: "#10B981")
-                                            : (isFullPayoffTx ? Color(hex: "#10B981") : (transaction.type == .income ? Color(hex: "#10B981") : Color.primary))
-                                    )
-
-                                if isShadowed {
-                                    Text(AppFormatters.currency(transaction.amount))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .strikethrough(true, color: .secondary)
+                            HStack(spacing: 6) {
+                                if let acc {
+                                    Text(acc.name)
+                                        .font(.system(size: 11))
                                         .foregroundStyle(Color.secondary)
-                                } else if !isBulkSelectionMode, let onTogglePaid {
-                                    Button(action: onTogglePaid) {
-                                        let isPaid = transaction.isPaid
-                                        let labelText = isPaid
-                                            ? (transaction.type == .expense ? "Pago" : "Recebido")
-                                            : (transaction.type == .expense ? "Pagar" : "Receber")
-                                        let iconName = isPaid
-                                            ? "checkmark.circle.fill"
-                                            : (transaction.type == .expense ? "creditcard.fill" : "arrow.down.circle.fill")
-                                        let accentHex = isPaid
-                                            ? "#10B981"
-                                            : (transaction.type == .expense ? "#0284C7" : "#10B981")
+                                }
 
-                                        HStack(spacing: 4) {
-                                            Image(systemName: iconName)
-                                                .font(.system(size: 10, weight: .bold))
-                                            Text(labelText)
-                                                .font(.system(size: 11, weight: .bold))
-                                        }
-                                        .foregroundStyle(isPaid ? Color(hex: "#10B981") : .white)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            Capsule()
-                                                .fill(isPaid ? Color(hex: "#10B981").opacity(0.16) : Color(hex: accentHex))
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
+                                if let badge = transaction.installmentBadge {
+                                    Text(badge)
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                                        .foregroundStyle(Color.secondary)
+                                }
+
+                                if isFullPayoffTx {
+                                    Text("Liquidação Planejada (Quitação Total)")
+                                        .font(.system(size: 9, weight: .heavy))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#10B981").opacity(0.22)))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                } else if projStatus == .pendingAmortization {
+                                    Text("Amortização Planejada")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#8B5CF6").opacity(0.18)))
+                                        .foregroundStyle(Color(hex: "#8B5CF6"))
+                                } else if isShadowed {
+                                    Text("Suprimida pelo Plano (R$ 0,00)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Capsule().fill(Color(hex: "#10B981").opacity(0.16)))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                } else if !transaction.isPaid {
+                                    Text("Pendente")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: "#F59E0B").opacity(0.18)))
+                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                }
+                            }
+
+                            if let breakdown = correctionBreakdown {
+                                if let confirmed = breakdown.confirmedRealCorrectionAmount, transaction.isPaid {
+                                    Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Juros/Correção Efetivada: +\(AppFormatters.currency(confirmed))")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundStyle(Color(hex: "#10B981"))
+                                        .lineLimit(1)
+                                } else {
+                                    Text("Base: \(AppFormatters.currency(breakdown.baseRegisteredAmount)) • Projeção (+\(breakdown.futureMonthStep)m): +\(AppFormatters.currency(breakdown.projectedCorrectionAmount))")
+                                        .font(.system(size: 9.5, weight: .semibold))
+                                        .foregroundStyle(Color(hex: "#F59E0B"))
+                                        .lineLimit(1)
                                 }
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+
+                        Spacer(minLength: 8)
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(AppFormatters.currency(effectiveAmount))
+                                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                .foregroundStyle(
+                                    isShadowed
+                                        ? Color(hex: "#10B981")
+                                        : (isFullPayoffTx ? Color(hex: "#10B981") : (transaction.type == .income ? Color(hex: "#10B981") : Color.primary))
+                                )
+
+                            if isShadowed {
+                                Text(AppFormatters.currency(transaction.amount))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .strikethrough(true, color: .secondary)
+                                    .foregroundStyle(Color.secondary)
+                            } else if !isBulkSelectionMode, let onTogglePaid {
+                                Button(action: onTogglePaid) {
+                                    let isPaid = transaction.isPaid
+                                    let labelText = isPaid
+                                        ? (transaction.type == .expense ? "Pago" : "Recebido")
+                                        : (transaction.type == .expense ? "Pagar" : "Receber")
+                                    let iconName = isPaid
+                                        ? "checkmark.circle.fill"
+                                        : (transaction.type == .expense ? "creditcard.fill" : "arrow.down.circle.fill")
+                                    let accentHex = isPaid
+                                        ? "#10B981"
+                                        : (transaction.type == .expense ? "#0284C7" : "#10B981")
+
+                                    HStack(spacing: 4) {
+                                        Image(systemName: iconName)
+                                            .font(.system(size: 10, weight: .bold))
+                                        Text(labelText)
+                                            .font(.system(size: 11, weight: .bold))
+                                    }
+                                    .foregroundStyle(isPaid ? Color(hex: "#10B981") : .white)
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        Capsule()
+                                            .fill(isPaid ? Color(hex: "#10B981").opacity(0.16) : Color(hex: accentHex))
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
@@ -837,52 +823,59 @@ public struct TransactionRow: View {
                     )
             )
             .offset(x: swipeOffset)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !isDraggingHorizontally else { return }
+                if isDeleteRevealed {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        swipeOffset = 0
+                        isDeleteRevealed = false
+                    }
+                    return
+                }
+                onTap()
+            }
+            .onLongPressGesture(minimumDuration: 0.45) {
+                guard !isDeleteRevealed, !isDraggingHorizontally else { return }
+                onLongPress?()
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 18, coordinateSpace: .local)
+                    .onChanged { value in
+                        guard !isBulkSelectionMode, onRequestDelete != nil else { return }
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard isDraggingHorizontally || abs(dx) > abs(dy) * 1.3 else { return }
+                        isDraggingHorizontally = true
+                        let base: CGFloat = isDeleteRevealed ? -88 : 0
+                        swipeOffset = max(-220, min(0, base + dx))
+                    }
+                    .onEnded { value in
+                        guard !isBulkSelectionMode, onRequestDelete != nil else { return }
+                        let wasDraggingHorizontally = isDraggingHorizontally
+                        isDraggingHorizontally = false
+                        guard wasDraggingHorizontally || swipeOffset < 0 else { return }
+                        if swipeOffset <= -165 {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                swipeOffset = 0
+                                isDeleteRevealed = false
+                            }
+                            onRequestDelete?()
+                        } else if swipeOffset <= -42 {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                swipeOffset = -88
+                                isDeleteRevealed = true
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                swipeOffset = 0
+                                isDeleteRevealed = false
+                            }
+                        }
+                    }
+            )
         }
         .opacity(isBulkSelectionMode && !isEligibleForBulk ? 0.55 : 1.0)
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.45)
-                .onEnded { _ in
-                    ignoreNextTapFromLongPress = true
-                    onLongPress?()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        ignoreNextTapFromLongPress = false
-                    }
-                }
-        )
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                .onChanged { value in
-                    guard !isBulkSelectionMode, onRequestDelete != nil else { return }
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) * 1.4 else { return }
-                    let base: CGFloat = isDeleteRevealed ? -88 : 0
-                    swipeOffset = max(-120, min(0, base + dx))
-                }
-                .onEnded { value in
-                    guard !isBulkSelectionMode, onRequestDelete != nil else { return }
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard abs(dx) > abs(dy) * 1.4 || swipeOffset < 0 else { return }
-                    if swipeOffset < -105 {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            swipeOffset = 0
-                            isDeleteRevealed = false
-                        }
-                        onRequestDelete?()
-                    } else if swipeOffset < -44 {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            swipeOffset = -88
-                            isDeleteRevealed = true
-                        }
-                    } else {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            swipeOffset = 0
-                            isDeleteRevealed = false
-                        }
-                    }
-                }
-        )
     }
 }
 
