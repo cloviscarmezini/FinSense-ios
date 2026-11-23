@@ -87,6 +87,51 @@ final class FinSenseTests: XCTestCase {
     }
 
     @MainActor
+    func testIntraMonthCashFlowTroughCutoffAndRecovery() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        var comps = DateComponents(year: 2026, month: 11, day: 1, hour: 12)
+        let refNow = Calendar.current.date(from: comps)!
+        store.simulatedCurrentDate = refNow
+
+        store.createAccount(name: "Itaú iOS", initialBalance: 300.0)
+        let accId = store.accounts.first!.id
+        let expCatId = store.categories.first(where: { $0.type == .expense })!.id
+        let incCatId = store.categories.first(where: { $0.type == .income })!.id
+
+        comps.day = 8
+        let txCut = store.createTransaction(
+            name: "Aluguel iOS",
+            amount: 1500.0,
+            date: Calendar.current.date(from: comps)!,
+            type: .expense,
+            isPaid: false,
+            categoryId: expCatId,
+            accountId: accId
+        )
+
+        comps.day = 26
+        let txRec = store.createTransaction(
+            name: "Salário iOS",
+            amount: 3000.0,
+            date: Calendar.current.date(from: comps)!,
+            type: .income,
+            isPaid: false,
+            categoryId: incCatId,
+            accountId: accId
+        )
+
+        let analysis = store.buildIntraMonthCashFlowAnalysis(for: refNow)
+        XCTAssertTrue(analysis.hasIntraMonthDeficit)
+        XCTAssertTrue(analysis.isTemporaryTrough)
+        XCTAssertEqual(analysis.closingBalance, 1800.0, accuracy: 0.01)
+        XCTAssertEqual(analysis.minimumBalance, -1200.0, accuracy: 0.01)
+        XCTAssertEqual(analysis.cutoffTransactionId, txCut.id)
+        XCTAssertEqual(analysis.recoveryTransactionId, txRec.id)
+        XCTAssertEqual(analysis.riskStartDay, 8)
+        XCTAssertEqual(analysis.riskEndDay, 26)
+    }
+
+    @MainActor
     func testAmortizationExtraordinarySAC() throws {
         let store = FinancialDataStore(customFileURL: tempDatabaseURL)
         store.createAccount(name: "CAIXA", initialBalance: 50000.0)
