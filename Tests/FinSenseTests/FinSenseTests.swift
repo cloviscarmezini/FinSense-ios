@@ -886,4 +886,32 @@ final class FinSenseTests: XCTestCase {
         XCTAssertEqual(container.creditCardInvoices?.count, 1)
         XCTAssertEqual(container.creditCardInvoices?.first?.yearMonthKey, 202611)
     }
+
+    @MainActor
+    func testRemoteStatusDetectionUpdatesSyncStatusAndIcon() throws {
+        let json = """
+        {
+          "latest_revision": 88,
+          "has_changes": true,
+          "server_reset": false
+        }
+        """.data(using: .utf8)!
+
+        let dto = try JSONDecoder().decode(CloudSyncStatusResponseDTO.self, from: json)
+        XCTAssertEqual(dto.latestRevision, 88)
+        XCTAssertTrue(dto.hasChanges)
+        XCTAssertFalse(dto.serverReset)
+
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let syncService = CloudSyncService(store: store)
+        syncService.isEnabled = true
+        syncService.applyRemoteStatusCheckResult(dto)
+
+        XCTAssertTrue(syncService.hasRemoteUpdates)
+        XCTAssertEqual(syncService.remoteLatestRevision, 88)
+        XCTAssertEqual(SyncStatus.remoteUpdatesAvailable(latestRevision: 88).iconSymbol, "icloud.and.arrow.down.fill")
+
+        syncService.applyRemoteStatusCheckResult(CloudSyncStatusResponseDTO(latestRevision: 88, hasChanges: false, serverReset: false))
+        XCTAssertFalse(syncService.hasRemoteUpdates)
+    }
 }
