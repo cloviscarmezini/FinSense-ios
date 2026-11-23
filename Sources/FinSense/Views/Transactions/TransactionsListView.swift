@@ -76,6 +76,35 @@ public struct TransactionsListView: View {
                     // Cards de Resumo Rápido do Filtro
                     filterSummaryCards
 
+                    // Alerta de Descasamento de Caixa (Vale Intramês)
+                    let intraAnalysis = store.buildIntraMonthCashFlowAnalysis(for: store.selectedMonth)
+                    if intraAnalysis.hasIntraMonthDeficit && !store.isMonthPriorToCurrent(store.selectedMonth) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color(hex: "#EF4444"))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(intraAnalysis.isTemporaryTrough ? "Vale de caixa intramês" : "Risco de caixa negativo")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Color(hex: "#EF4444"))
+                                Text(intraAnalysis.alertSummaryText ?? "Faltará saldo no período")
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            IntraMonthSparklineView(analysis: intraAnalysis, height: 22)
+                                .frame(width: 85)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(hex: "#EF4444").opacity(0.10))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#EF4444").opacity(0.32), lineWidth: 0.9))
+                        )
+                        .padding(.horizontal, 20)
+                    }
+
                     // Pílulas Deslizantes de Filtro (Scroll horizontal para nunca achatar)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
@@ -167,6 +196,7 @@ public struct TransactionsListView: View {
                                             TransactionRow(
                                                 transaction: tx,
                                                 store: store,
+                                                intraMonthAnalysis: intraAnalysis,
                                                 isBulkSelectionMode: isBulkSelectionMode,
                                                 isSelected: selectedTransactionIds.contains(tx.id),
                                                 onTap: {
@@ -645,6 +675,7 @@ public struct TransactionsListView: View {
 public struct TransactionRow: View {
     public let transaction: FinancialTransaction
     @ObservedObject public var store: FinancialDataStore
+    public var intraMonthAnalysis: IntraMonthCashFlowAnalysis? = nil
     public var isBulkSelectionMode: Bool = false
     public var isSelected: Bool = false
     public var onTap: () -> Void
@@ -668,10 +699,41 @@ public struct TransactionRow: View {
         let isShadowed = projStatus == .shadowed
         let correctionBreakdown = store.installmentCorrectionBreakdown(for: transaction)
         let isEligibleForBulk = !transaction.isPaid && !isShadowed && !transaction.isCreditCardExpense
+        let isCutoffTx = intraMonthAnalysis?.cutoffTransactionId == transaction.id
+        let isRecoveryTx = intraMonthAnalysis?.recoveryTransactionId == transaction.id
+        let isInDeficitZone = intraMonthAnalysis?.deficitZoneTransactionIds.contains(transaction.id) == true
+        let runningBalance = intraMonthAnalysis?.runningBalanceByTransactionId[transaction.id]
 
         ZStack(alignment: .trailing) {
             LiquidGlassCard(cornerRadius: 16, padding: 12) {
-                HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if isCutoffTx {
+                        HStack(spacing: 4) {
+                            Image(systemName: "scissors")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Text("LINHA DE CORTE — Saldo fica negativo aqui")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Spacer()
+                        }
+                        .foregroundStyle(Color(hex: "#EF4444"))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#EF4444").opacity(0.14)))
+                    } else if isRecoveryTx {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.right.circle.fill")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Text("CAIXA NORMALIZADO")
+                                .font(.system(size: 9.5, weight: .bold))
+                            Spacer()
+                        }
+                        .foregroundStyle(Color(hex: "#10B981"))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color(hex: "#10B981").opacity(0.14)))
+                    }
+
+                    HStack(spacing: 12) {
                     if isBulkSelectionMode {
                         Image(systemName: isEligibleForBulk
                               ? (isSelected ? "checkmark.circle.fill" : "circle")
@@ -845,9 +907,16 @@ public struct TransactionRow: View {
                                 }
                                 .buttonStyle(.plain)
                             }
+
+                            if let rb = runningBalance {
+                                Text("Saldo: \(AppFormatters.currency(rb))")
+                                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(rb < -0.005 ? Color(hex: "#EF4444") : Color.secondary)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 }
                 .contentShape(Rectangle())
             }
@@ -856,8 +925,8 @@ public struct TransactionRow: View {
                     .stroke(
                         isBulkSelectionMode && isSelected
                             ? Color(hex: "#10B981").opacity(0.85)
-                            : (isFullPayoffTx ? Color(hex: "#10B981").opacity(0.55) : Color.clear),
-                        lineWidth: isBulkSelectionMode && isSelected ? 1.8 : 1.3
+                            : (isInDeficitZone ? Color(hex: "#EF4444").opacity(0.55) : (isFullPayoffTx ? Color(hex: "#10B981").opacity(0.55) : Color.clear)),
+                        lineWidth: (isBulkSelectionMode && isSelected) || isInDeficitZone ? 1.6 : 1.3
                     )
             )
             .offset(x: swipeOffset)

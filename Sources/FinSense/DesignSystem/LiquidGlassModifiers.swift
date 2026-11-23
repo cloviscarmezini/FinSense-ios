@@ -1,5 +1,6 @@
 // Sources/FinSense/DesignSystem/LiquidGlassModifiers.swift
 import SwiftUI
+import Charts
 
 public struct LiquidGlassCardModifier: ViewModifier {
     @Environment(\.colorScheme) var colorScheme
@@ -121,6 +122,7 @@ public struct LiquidKPICard: View {
     public let tint: Color
     public var footnote: String? = nil
     public var footnoteColor: Color? = nil
+    public var intraMonthAnalysis: IntraMonthCashFlowAnalysis? = nil
     public var cardHeight: CGFloat = 132
 
     public init(
@@ -133,6 +135,7 @@ public struct LiquidKPICard: View {
         tint: Color,
         footnote: String? = nil,
         footnoteColor: Color? = nil,
+        intraMonthAnalysis: IntraMonthCashFlowAnalysis? = nil,
         cardHeight: CGFloat = 132
     ) {
         self.title = title
@@ -144,6 +147,7 @@ public struct LiquidKPICard: View {
         self.tint = tint
         self.footnote = footnote
         self.footnoteColor = footnoteColor
+        self.intraMonthAnalysis = intraMonthAnalysis
         self.cardHeight = cardHeight
     }
 
@@ -196,9 +200,60 @@ public struct LiquidKPICard: View {
                         .foregroundStyle(footnoteColor ?? .secondary)
                         .lineLimit(1)
                 }
+
+                if let intra = intraMonthAnalysis, !intra.dailyPoints.isEmpty {
+                    IntraMonthSparklineView(analysis: intra, height: 18)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: cardHeight, alignment: .topLeading)
         }
+    }
+}
+
+public struct IntraMonthSparklineView: View {
+    public let analysis: IntraMonthCashFlowAnalysis
+    public var height: CGFloat = 18
+
+    public init(analysis: IntraMonthCashFlowAnalysis, height: CGFloat = 18) {
+        self.analysis = analysis
+        self.height = height
+    }
+
+    public var body: some View {
+        Chart {
+            RuleMark(y: .value("Zero", 0))
+                .foregroundStyle(Color.secondary.opacity(0.35))
+                .lineStyle(StrokeStyle(lineWidth: 0.7, dash: [2, 2]))
+
+            ForEach(analysis.dailyPoints) { pt in
+                LineMark(
+                    x: .value("Dia", pt.day),
+                    y: .value("Saldo", pt.closingBalance)
+                )
+                .foregroundStyle(analysis.hasIntraMonthDeficit ? Color(hex: "#F59E0B") : Color(hex: "#10B981"))
+                .lineStyle(StrokeStyle(lineWidth: 1.5))
+
+                if pt.closingBalance < -0.005 {
+                    AreaMark(
+                        x: .value("Dia", pt.day),
+                        yStart: .value("Zero", 0.0),
+                        yEnd: .value("Saldo", pt.closingBalance)
+                    )
+                    .foregroundStyle(Color(hex: "#EF4444").opacity(0.38))
+
+                    PointMark(
+                        x: .value("Dia", pt.day),
+                        y: .value("Saldo", pt.closingBalance)
+                    )
+                    .symbolSize(8)
+                    .foregroundStyle(Color(hex: "#EF4444"))
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .frame(height: height)
     }
 }

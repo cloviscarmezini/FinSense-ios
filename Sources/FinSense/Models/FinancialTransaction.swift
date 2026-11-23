@@ -430,3 +430,106 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         try c.encode(createdAt, forKey: .createdAt)
     }
 }
+
+// MARK: - Análise Cronológica Intramês (Vale de Caixa)
+
+public struct DailyCashFlowPoint: Identifiable, Hashable, Sendable {
+    public var id: Int { day }
+    public let day: Int
+    public let date: Date
+    public let openingBalance: Double
+    public let dayIncome: Double
+    public let dayExpense: Double
+    public let closingBalance: Double
+
+    public var isNegative: Bool {
+        closingBalance < -0.005
+    }
+
+    public init(
+        day: Int,
+        date: Date,
+        openingBalance: Double,
+        dayIncome: Double,
+        dayExpense: Double,
+        closingBalance: Double
+    ) {
+        self.day = day
+        self.date = date
+        self.openingBalance = openingBalance
+        self.dayIncome = dayIncome
+        self.dayExpense = dayExpense
+        self.closingBalance = closingBalance
+    }
+}
+
+public struct IntraMonthCashFlowAnalysis: Hashable, Sendable {
+    public let monthStart: Date
+    public let monthEnd: Date
+    public let openingBalance: Double
+    public let closingBalance: Double
+    public let minimumBalance: Double
+    public let minimumBalanceDate: Date?
+    public let minimumBalanceDay: Int?
+    public let hasIntraMonthDeficit: Bool
+    public let isTemporaryTrough: Bool
+    public let riskStartDay: Int?
+    public let riskEndDay: Int?
+    public let cutoffTransactionId: UUID?
+    public let recoveryTransactionId: UUID?
+    public let deficitZoneTransactionIds: Set<UUID>
+    public let runningBalanceByTransactionId: [UUID: Double]
+    public let dailyPoints: [DailyCashFlowPoint]
+
+    public var shortfallAmount: Double {
+        max(0.0, -minimumBalance)
+    }
+
+    public var alertSummaryText: String? {
+        guard hasIntraMonthDeficit else { return nil }
+        let missingStr = AppFormatters.currency(shortfallAmount)
+        if let start = riskStartDay, let end = riskEndDay {
+            if start == end {
+                return "Faltarão \(missingStr) no dia \(start)"
+            }
+            return "Faltarão \(missingStr) entre os dias \(start) e \(end)"
+        }
+        return "Faltarão \(missingStr) durante o mês"
+    }
+
+    public init(
+        monthStart: Date,
+        monthEnd: Date,
+        openingBalance: Double,
+        closingBalance: Double,
+        minimumBalance: Double,
+        minimumBalanceDate: Date?,
+        minimumBalanceDay: Int?,
+        hasIntraMonthDeficit: Bool,
+        isTemporaryTrough: Bool,
+        riskStartDay: Int?,
+        riskEndDay: Int?,
+        cutoffTransactionId: UUID?,
+        recoveryTransactionId: UUID?,
+        deficitZoneTransactionIds: Set<UUID>,
+        runningBalanceByTransactionId: [UUID: Double],
+        dailyPoints: [DailyCashFlowPoint]
+    ) {
+        self.monthStart = monthStart
+        self.monthEnd = monthEnd
+        self.openingBalance = openingBalance
+        self.closingBalance = closingBalance
+        self.minimumBalance = minimumBalance
+        self.minimumBalanceDate = minimumBalanceDate
+        self.minimumBalanceDay = minimumBalanceDay
+        self.hasIntraMonthDeficit = hasIntraMonthDeficit
+        self.isTemporaryTrough = isTemporaryTrough
+        self.riskStartDay = riskStartDay
+        self.riskEndDay = riskEndDay
+        self.cutoffTransactionId = cutoffTransactionId
+        self.recoveryTransactionId = recoveryTransactionId
+        self.deficitZoneTransactionIds = deficitZoneTransactionIds
+        self.runningBalanceByTransactionId = runningBalanceByTransactionId
+        self.dailyPoints = dailyPoints
+    }
+}
