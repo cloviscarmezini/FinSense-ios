@@ -463,38 +463,116 @@ public struct DailyCashFlowPoint: Identifiable, Hashable, Sendable {
     }
 }
 
+public enum IntraMonthAlertLevel: String, Codable, Hashable, Sendable {
+    case none
+    case possibleRisk
+    case confirmedDeficit
+}
+
+public struct IntraMonthDeficitOccasion: Identifiable, Hashable, Sendable {
+    public var id: UUID { transactionId }
+    public let transactionId: UUID
+    public let date: Date
+    public let day: Int
+    public let month: Int
+    public let deficitAmount: Double
+    public let resultingBalance: Double
+    public let isRecoveredLater: Bool
+    public let recoveredDate: Date?
+    public let isResolvedByToday: Bool
+
+    public var dayMonthLabel: String {
+        String(format: "%02d/%02d", day, month)
+    }
+
+    public init(
+        transactionId: UUID,
+        date: Date,
+        day: Int,
+        month: Int,
+        deficitAmount: Double,
+        resultingBalance: Double,
+        isRecoveredLater: Bool,
+        recoveredDate: Date?,
+        isResolvedByToday: Bool
+    ) {
+        self.transactionId = transactionId
+        self.date = date
+        self.day = day
+        self.month = month
+        self.deficitAmount = deficitAmount
+        self.resultingBalance = resultingBalance
+        self.isRecoveredLater = isRecoveredLater
+        self.recoveredDate = recoveredDate
+        self.isResolvedByToday = isResolvedByToday
+    }
+}
+
 public struct IntraMonthCashFlowAnalysis: Hashable, Sendable {
     public let monthStart: Date
     public let monthEnd: Date
     public let openingBalance: Double
     public let closingBalance: Double
+    public let currentMonthProvisionsTotal: Double
+    public let closingBalanceWithProvisions: Double
     public let minimumBalance: Double
     public let minimumBalanceDate: Date?
     public let minimumBalanceDay: Int?
+    public let alertLevel: IntraMonthAlertLevel
     public let hasIntraMonthDeficit: Bool
     public let isTemporaryTrough: Bool
     public let riskStartDay: Int?
     public let riskEndDay: Int?
     public let cutoffTransactionId: UUID?
     public let recoveryTransactionId: UUID?
+    public let cutoffTransactionIds: Set<UUID>
+    public let deepeningDeficitTransactionIds: Set<UUID>
+    public let recoveryTransactionIds: Set<UUID>
     public let deficitZoneTransactionIds: Set<UUID>
+    public let deficitOccasions: [IntraMonthDeficitOccasion]
+    public let alertableOccasions: [IntraMonthDeficitOccasion]
     public let runningBalanceByTransactionId: [UUID: Double]
     public let dailyPoints: [DailyCashFlowPoint]
 
     public var shortfallAmount: Double {
-        max(0.0, -minimumBalance)
+        if !alertableOccasions.isEmpty {
+            return max(0.0, alertableOccasions.reduce(0.0) { $0 + $1.deficitAmount })
+        }
+        if alertLevel == .possibleRisk {
+            return max(0.0, -closingBalanceWithProvisions)
+        }
+        return max(0.0, -minimumBalance)
     }
 
     public var alertSummaryText: String? {
-        guard hasIntraMonthDeficit else { return nil }
-        let missingStr = AppFormatters.currency(shortfallAmount)
-        if let start = riskStartDay, let end = riskEndDay {
-            if start == end {
-                return "Faltarão \(missingStr) no dia \(start)"
+        switch alertLevel {
+        case .none:
+            return nil
+        case .possibleRisk:
+            let missingStr = AppFormatters.currency(max(0.0, -closingBalanceWithProvisions))
+            return "Possibilidade de caixa negativo (até \(missingStr) c/ previsões)"
+        case .confirmedDeficit:
+            if alertableOccasions.isEmpty {
+                let missingStr = AppFormatters.currency(max(0.0, -minimumBalance))
+                if let start = riskStartDay, let end = riskEndDay {
+                    return start == end
+                        ? "Faltarão \(missingStr) no dia \(start)"
+                        : "Faltarão \(missingStr) entre os dias \(start) e \(end)"
+                }
+                return "Faltarão \(missingStr) durante o mês"
             }
-            return "Faltarão \(missingStr) entre os dias \(start) e \(end)"
+            let parts = alertableOccasions.map { occ in
+                "\(AppFormatters.currency(occ.deficitAmount)) no dia \(occ.dayMonthLabel)"
+            }
+            if parts.count == 1 {
+                return "Faltarão \(parts[0])"
+            } else if parts.count == 2 {
+                return "Faltarão \(parts[0]) e \(parts[1])"
+            } else {
+                let head = parts.dropLast().joined(separator: ", ")
+                return "Faltarão \(head) e \(parts.last!)"
+            }
         }
-        return "Faltarão \(missingStr) durante o mês"
     }
 
     public init(
@@ -502,16 +580,24 @@ public struct IntraMonthCashFlowAnalysis: Hashable, Sendable {
         monthEnd: Date,
         openingBalance: Double,
         closingBalance: Double,
+        currentMonthProvisionsTotal: Double = 0.0,
+        closingBalanceWithProvisions: Double? = nil,
         minimumBalance: Double,
         minimumBalanceDate: Date?,
         minimumBalanceDay: Int?,
+        alertLevel: IntraMonthAlertLevel? = nil,
         hasIntraMonthDeficit: Bool,
         isTemporaryTrough: Bool,
         riskStartDay: Int?,
         riskEndDay: Int?,
         cutoffTransactionId: UUID?,
         recoveryTransactionId: UUID?,
+        cutoffTransactionIds: Set<UUID> = [],
+        deepeningDeficitTransactionIds: Set<UUID> = [],
+        recoveryTransactionIds: Set<UUID> = [],
         deficitZoneTransactionIds: Set<UUID>,
+        deficitOccasions: [IntraMonthDeficitOccasion] = [],
+        alertableOccasions: [IntraMonthDeficitOccasion] = [],
         runningBalanceByTransactionId: [UUID: Double],
         dailyPoints: [DailyCashFlowPoint]
     ) {
@@ -519,16 +605,24 @@ public struct IntraMonthCashFlowAnalysis: Hashable, Sendable {
         self.monthEnd = monthEnd
         self.openingBalance = openingBalance
         self.closingBalance = closingBalance
+        self.currentMonthProvisionsTotal = currentMonthProvisionsTotal
+        self.closingBalanceWithProvisions = closingBalanceWithProvisions ?? (closingBalance - currentMonthProvisionsTotal)
         self.minimumBalance = minimumBalance
         self.minimumBalanceDate = minimumBalanceDate
         self.minimumBalanceDay = minimumBalanceDay
+        self.alertLevel = alertLevel ?? (hasIntraMonthDeficit ? .confirmedDeficit : .none)
         self.hasIntraMonthDeficit = hasIntraMonthDeficit
         self.isTemporaryTrough = isTemporaryTrough
         self.riskStartDay = riskStartDay
         self.riskEndDay = riskEndDay
         self.cutoffTransactionId = cutoffTransactionId
         self.recoveryTransactionId = recoveryTransactionId
+        self.cutoffTransactionIds = cutoffTransactionIds
+        self.deepeningDeficitTransactionIds = deepeningDeficitTransactionIds
+        self.recoveryTransactionIds = recoveryTransactionIds
         self.deficitZoneTransactionIds = deficitZoneTransactionIds
+        self.deficitOccasions = deficitOccasions
+        self.alertableOccasions = alertableOccasions
         self.runningBalanceByTransactionId = runningBalanceByTransactionId
         self.dailyPoints = dailyPoints
     }

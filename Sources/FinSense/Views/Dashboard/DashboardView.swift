@@ -314,19 +314,19 @@ public struct DashboardView: View {
         let surplusFootnote = summary.surplusAfterPlanning >= 0 ? "Planejamento sustentável" : "Ajuste de gastos recomendado"
         let surplusColor = summary.surplusAfterPlanning >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
 
-        // Card 6 — Saldo Previsto na Conta (com alerta de vale intramês + sparkline)
+        // Card 6 — Saldo Previsto na Conta (com alerta em 2 níveis + sparkline)
         let intraAnalysis: IntraMonthCashFlowAnalysis? = (!isAnnual && !summary.isPast)
             ? store.buildIntraMonthCashFlowAnalysis(for: store.selectedMonth)
             : nil
-        let hasIntraDeficit = intraAnalysis?.hasIntraMonthDeficit == true
+        let cardAlertLevel: IntraMonthAlertLevel = summary.isPast ? .none : (intraAnalysis?.alertLevel ?? .none)
 
         let projectedBalanceValue = summary.isPast
             ? summary.projectedAccountBalance
             : summary.balanceIfAllBudgetsConsumed
 
         let projectedBalanceTint: Color = {
-            if projectedBalanceValue < 0 { return Color(hex: "#EF4444") }
-            if hasIntraDeficit { return Color(hex: "#F59E0B") }
+            if cardAlertLevel == .confirmedDeficit || projectedBalanceValue < 0 { return Color(hex: "#EF4444") }
+            if cardAlertLevel == .possibleRisk { return Color(hex: "#F59E0B") }
             return Color(hex: "#10B981")
         }()
 
@@ -334,8 +334,11 @@ public struct DashboardView: View {
             if summary.isPast {
                 return Text("Saldo final histórico conciliado").foregroundColor(.secondary)
             }
-            if hasIntraDeficit, let alertMsg = intraAnalysis?.alertSummaryText {
+            if cardAlertLevel == .confirmedDeficit, let alertMsg = intraAnalysis?.alertSummaryText {
                 return Text("⚠️ \(alertMsg)").fontWeight(.semibold).foregroundColor(Color(hex: "#EF4444"))
+            }
+            if cardAlertLevel == .possibleRisk, let alertMsg = intraAnalysis?.alertSummaryText {
+                return Text("⚠️ \(alertMsg)").fontWeight(.semibold).foregroundColor(Color(hex: "#D97706"))
             }
             let prefix = "Se não usar o orçamento: "
             let valueStr = AppFormatters.currency(summary.projectedAccountBalance)
@@ -347,24 +350,39 @@ public struct DashboardView: View {
             if summary.isPast {
                 return "Resultado final registrado"
             }
-            if hasIntraDeficit {
+            switch cardAlertLevel {
+            case .confirmedDeficit:
                 return intraAnalysis?.isTemporaryTrough == true
                     ? "Vale intramês detectado"
-                    : "Alerta: Risco de caixa negativo"
+                    : "Falta de caixa confirmada"
+            case .possibleRisk:
+                return "Possível déficit por previsões"
+            case .none:
+                if projectedBalanceValue < 0 {
+                    return "Alerta: Risco de caixa negativo"
+                }
+                return "Saldo projetado em conta"
             }
-            if projectedBalanceValue < 0 {
-                return "Alerta: Risco de caixa negativo"
-            }
-            return "Saldo projetado em conta"
         }()
 
         let accountFootnoteColor: Color = {
             if summary.isPast { return .secondary }
-            if hasIntraDeficit { return Color(hex: "#EF4444") }
-            return projectedBalanceValue >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+            switch cardAlertLevel {
+            case .confirmedDeficit: return Color(hex: "#EF4444")
+            case .possibleRisk: return Color(hex: "#D97706")
+            case .none: return projectedBalanceValue >= 0 ? Color(hex: "#10B981") : Color(hex: "#EF4444")
+            }
         }()
 
-        let rowCardHeight: CGFloat = (intraAnalysis != nil) ? 148 : 132
+        let accountIcon: String = {
+            switch cardAlertLevel {
+            case .confirmedDeficit: return "exclamationmark.triangle.fill"
+            case .possibleRisk: return "exclamationmark.circle.fill"
+            case .none: return summary.isPast ? "checkmark.seal.fill" : "building.columns.fill"
+            }
+        }()
+
+        let rowCardHeight: CGFloat = (intraAnalysis != nil) ? 160 : 132
 
         return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
             // 1. Receitas Previstas
@@ -429,7 +447,7 @@ public struct DashboardView: View {
                 value: AppFormatters.currency(projectedBalanceValue),
                 valueColor: nil,
                 customSubtitle: accountCustomSubtitle,
-                icon: hasIntraDeficit ? "exclamationmark.triangle.fill" : (summary.isPast ? "checkmark.seal.fill" : "building.columns.fill"),
+                icon: accountIcon,
                 tint: projectedBalanceTint,
                 footnote: accountFootnote,
                 footnoteColor: accountFootnoteColor,

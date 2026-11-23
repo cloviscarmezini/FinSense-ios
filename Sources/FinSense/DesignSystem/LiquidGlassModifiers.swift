@@ -178,7 +178,7 @@ public struct LiquidKPICard: View {
                     .minimumScaleFactor(0.75)
                     .monospacedDigit()
 
-                // 3. Subtítulo (com altura fixa para manter alinhamento rigoroso)
+                // 3. Subtítulo
                 Group {
                     if let customSubtitle {
                         customSubtitle
@@ -188,8 +188,9 @@ public struct LiquidKPICard: View {
                     }
                 }
                 .font(.system(size: 9.5))
-                .lineLimit(2)
-                .frame(height: 26, alignment: .topLeading)
+                .lineLimit(intraMonthAnalysis == nil ? 2 : 3)
+                .minimumScaleFactor(0.8)
+                .frame(minHeight: 26, alignment: .topLeading)
 
                 Spacer(minLength: 0)
 
@@ -206,7 +207,7 @@ public struct LiquidKPICard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: cardHeight, alignment: .topLeading)
+            .frame(minHeight: cardHeight, alignment: .topLeading)
         }
     }
 }
@@ -231,7 +232,11 @@ public struct IntraMonthSparklineView: View {
                     x: .value("Dia", pt.day),
                     y: .value("Saldo", pt.closingBalance)
                 )
-                .foregroundStyle(analysis.hasIntraMonthDeficit ? Color(hex: "#F59E0B") : Color(hex: "#10B981"))
+                .foregroundStyle(
+                    analysis.alertLevel == .confirmedDeficit
+                        ? Color(hex: "#EF4444")
+                        : (analysis.alertLevel == .possibleRisk ? Color(hex: "#F59E0B") : Color(hex: "#10B981"))
+                )
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
 
                 if pt.closingBalance < -0.005 {

@@ -959,4 +959,67 @@ final class FinSenseTests: XCTestCase {
         syncService.applyRemoteStatusCheckResult(CloudSyncStatusResponseDTO(latestRevision: 88, hasChanges: false, serverReset: false))
         XCTAssertFalse(syncService.hasRemoteUpdates)
     }
+
+    @MainActor
+    func testIntraMonthNovDecJanScenariosAndTwoLevelAlerts() throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        let cal = store.calendar
+        let makeDate: (Int, Int, Int) -> Date = { y, m, d in
+            cal.date(from: DateComponents(year: y, month: m, day: d, hour: 12))!
+        }
+
+        let refNow = makeDate(2026, 11, 23)
+        store.simulatedCurrentDate = refNow
+
+        store.createAccount(name: "Conta Principal", initialBalance: 200.0)
+        let accountId = store.accounts.first!.id
+        let expCatId = store.categories.first(where: { $0.type == .expense })!.id
+        let incCatId = store.categories.first(where: { $0.type == .income })!.id
+
+        let novTx1 = store.createTransaction(name: "Despesa 1", amount: 100, date: makeDate(2026, 11, 1), type: .expense, isPaid: true, categoryId: expCatId, accountId: accountId)
+        let novTx2 = store.createTransaction(name: "Despesa 2", amount: 110, date: makeDate(2026, 11, 4), type: .expense, isPaid: true, categoryId: expCatId, accountId: accountId)
+        let novRec1 = store.createTransaction(name: "Receita 1", amount: 110, date: makeDate(2026, 11, 5), type: .income, isPaid: true, categoryId: incCatId, accountId: accountId)
+        let novTx3 = store.createTransaction(name: "Despesa 3", amount: 90, date: makeDate(2026, 11, 22), type: .expense, isPaid: true, categoryId: expCatId, accountId: accountId)
+        let novTx4 = store.createTransaction(name: "Despesa 4", amount: 50, date: makeDate(2026, 11, 25), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        _ = (novTx1, novTx3)
+
+        let decRec1 = store.createTransaction(name: "Receita Dez", amount: 1000, date: makeDate(2026, 12, 1), type: .income, isPaid: false, categoryId: incCatId, accountId: accountId)
+        _ = store.createTransaction(name: "Despesa Dez 1", amount: 100, date: makeDate(2026, 12, 2), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        _ = store.createTransaction(name: "Despesa Dez 2", amount: 400, date: makeDate(2026, 12, 5), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        let provCatId = store.categories.last(where: { $0.type == .expense && $0.id != expCatId })!.id
+        store.setProvision(categoryId: provCatId, year: 2026, month: 12, amount: 900.0, repeatForFuture: false)
+
+        let janRec1 = store.createTransaction(name: "Receita Jan", amount: 1040, date: makeDate(2027, 1, 1), type: .income, isPaid: false, categoryId: incCatId, accountId: accountId)
+        _ = store.createTransaction(name: "Despesa Jan 1", amount: 100, date: makeDate(2027, 1, 2), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        _ = store.createTransaction(name: "Despesa Jan 2", amount: 400, date: makeDate(2027, 1, 5), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        let janTx3 = store.createTransaction(name: "Despesa Jan 3", amount: 150, date: makeDate(2027, 1, 6), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+        let janTx4 = store.createTransaction(name: "Despesa Jan 4", amount: 200, date: makeDate(2027, 1, 25), type: .expense, isPaid: false, categoryId: expCatId, accountId: accountId)
+
+        let nov = store.buildIntraMonthCashFlowAnalysis(for: makeDate(2026, 11, 1), referenceNow: refNow)
+        XCTAssertEqual(nov.openingBalance, 200.0, accuracy: 0.01)
+        XCTAssertEqual(nov.closingBalance, -40.0, accuracy: 0.01)
+        XCTAssertEqual(nov.cutoffTransactionIds, Set([novTx2.id, novTx4.id]))
+        XCTAssertEqual(nov.recoveryTransactionIds, Set([novRec1.id]))
+        XCTAssertEqual(nov.alertLevel, .confirmedDeficit)
+        XCTAssertEqual(nov.alertSummaryText, "Faltarão \(AppFormatters.currency(40.0)) no dia 25/11")
+
+        let dec = store.buildIntraMonthCashFlowAnalysis(for: makeDate(2026, 12, 1), referenceNow: refNow)
+        XCTAssertEqual(dec.openingBalance, -40.0, accuracy: 0.01)
+        XCTAssertEqual(dec.recoveryTransactionIds, Set([decRec1.id]))
+        XCTAssertEqual(dec.closingBalance, 460.0, accuracy: 0.01)
+        XCTAssertEqual(dec.closingBalanceWithProvisions, -440.0, accuracy: 0.01)
+        XCTAssertEqual(dec.alertLevel, .possibleRisk)
+        XCTAssertTrue(dec.cutoffTransactionIds.isEmpty)
+
+        let jan = store.buildIntraMonthCashFlowAnalysis(for: makeDate(2027, 1, 1), referenceNow: refNow)
+        XCTAssertEqual(jan.openingBalance, -440.0, accuracy: 0.01)
+        XCTAssertEqual(jan.recoveryTransactionIds, Set([janRec1.id]))
+        XCTAssertEqual(jan.cutoffTransactionIds, Set([janTx3.id]))
+        XCTAssertEqual(jan.deepeningDeficitTransactionIds, Set([janTx4.id]))
+        XCTAssertEqual(jan.alertLevel, .confirmedDeficit)
+        XCTAssertEqual(
+            jan.alertSummaryText,
+            "Faltarão \(AppFormatters.currency(50.0)) no dia 06/01 e \(AppFormatters.currency(200.0)) no dia 25/01"
+        )
+    }
 }
