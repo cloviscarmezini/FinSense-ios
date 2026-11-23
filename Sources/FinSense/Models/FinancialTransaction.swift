@@ -109,6 +109,7 @@ public enum TransactionOrigin: String, Codable, CaseIterable, Identifiable, Hash
     case debtPayment
     case quotaAllocation
     case internalTransfer
+    case creditCardInvoicePayment
 
     public var id: String { rawValue }
 }
@@ -145,7 +146,18 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
     public var baseInstallmentRegisteredAmount: Double?
     public var projectedInstallmentCorrectionAmount: Double?
     public var confirmedRealInterestCorrectionAmount: Double?
+    public var creditCardId: UUID?
+    public var creditCardInvoiceYearMonthKey: Int?
+    public var creditCardInvoiceId: UUID?
     public var createdAt: Date
+
+    public var isCreditCardInvoicePayment: Bool {
+        transactionOrigin == .creditCardInvoicePayment
+    }
+
+    public var isCreditCardExpense: Bool {
+        creditCardId != nil && !isCreditCardInvoicePayment
+    }
 
     public init(
         id: UUID = UUID(),
@@ -179,6 +191,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         baseInstallmentRegisteredAmount: Double? = nil,
         projectedInstallmentCorrectionAmount: Double? = nil,
         confirmedRealInterestCorrectionAmount: Double? = nil,
+        creditCardId: UUID? = nil,
+        creditCardInvoiceYearMonthKey: Int? = nil,
+        creditCardInvoiceId: UUID? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -208,10 +223,13 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         self.linkedQuotaUnits = linkedQuotaUnits
         self.linkedQuotaYearMonthKey = linkedQuotaYearMonthKey
         self.transactionOrigin = transactionOrigin
-        self.linkedEntityID = linkedEntityID ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId
+        self.linkedEntityID = linkedEntityID ?? linkedContractId ?? linkedInvestmentId ?? linkedDebtId ?? linkedQuotaId ?? creditCardInvoiceId
         self.baseInstallmentRegisteredAmount = baseInstallmentRegisteredAmount.map { abs($0) }
         self.projectedInstallmentCorrectionAmount = projectedInstallmentCorrectionAmount
         self.confirmedRealInterestCorrectionAmount = confirmedRealInterestCorrectionAmount
+        self.creditCardId = creditCardId
+        self.creditCardInvoiceYearMonthKey = creditCardInvoiceYearMonthKey
+        self.creditCardInvoiceId = creditCardInvoiceId
         self.createdAt = createdAt
     }
 
@@ -265,6 +283,7 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         case linkedContractId, linkedInvestmentId, linkedDebtId, linkedQuotaId
         case linkedQuotaUnits, linkedQuotaYearMonthKey, transactionOrigin, linkedEntityID
         case baseInstallmentRegisteredAmount, projectedInstallmentCorrectionAmount, confirmedRealInterestCorrectionAmount
+        case creditCardId, creditCardInvoiceYearMonthKey, creditCardInvoiceId
         case createdAt
     }
 
@@ -332,6 +351,12 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
             ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("projected_installment_correction_amount")))
         self.confirmedRealInterestCorrectionAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("confirmedRealInterestCorrectionAmount")))
             ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("confirmed_real_interest_correction_amount")))
+        self.creditCardId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("creditCardId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("credit_card_id")))
+        self.creditCardInvoiceYearMonthKey = (try? c.decodeIfPresent(Int.self, forKey: AnyKey("creditCardInvoiceYearMonthKey")))
+            ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("credit_card_invoice_year_month_key")))
+        self.creditCardInvoiceId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("creditCardInvoiceId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("credit_card_invoice_id")))
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -399,6 +424,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(baseInstallmentRegisteredAmount, forKey: .baseInstallmentRegisteredAmount)
         try c.encodeIfPresent(projectedInstallmentCorrectionAmount, forKey: .projectedInstallmentCorrectionAmount)
         try c.encodeIfPresent(confirmedRealInterestCorrectionAmount, forKey: .confirmedRealInterestCorrectionAmount)
+        try c.encodeIfPresent(creditCardId, forKey: .creditCardId)
+        try c.encodeIfPresent(creditCardInvoiceYearMonthKey, forKey: .creditCardInvoiceYearMonthKey)
+        try c.encodeIfPresent(creditCardInvoiceId, forKey: .creditCardInvoiceId)
         try c.encode(createdAt, forKey: .createdAt)
     }
 }
