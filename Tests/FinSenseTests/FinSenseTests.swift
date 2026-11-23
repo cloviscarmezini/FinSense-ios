@@ -735,4 +735,155 @@ final class FinSenseTests: XCTestCase {
         XCTAssertEqual(finalInv.balance, 10000.0, "Deletar resgate futuro não pago não deve alterar o saldo")
         XCTAssertEqual(finalInv.movements.count, 0)
     }
+
+    // MARK: - Cartões de Crédito (Competência vs. Caixa)
+
+    @MainActor
+    func testCreditCardInvoiceAllocationClosingAndYearBoundary() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        store.createAccount(name: "Conta Nubank", initialBalance: 5000.0)
+        let accountId = store.accounts.first!.id
+
+        let card = store.addCreditCard(
+            name: "Cartão Principal",
+            totalLimit: 6000.0,
+            closingDay: 10,
+            dueDay: 17,
+            defaultPaymentAccountId: accountId
+        )
+
+        let onClosing = calendar.date(from: DateComponents(year: 2026, month: 12, day: 10, hour: 12))!
+        let onBestPurchaseDay = calendar.date(from: DateComponents(year: 2026, month: 12, day: 11, hour: 12))!
+
+        let c1 = CreditCardEngine.allocateInvoice(forPurchaseDate: onClosing, card: card, calendar: calendar)
+        XCTAssertEqual(c1.year, 2026)
+        XCTAssertEqual(c1.month, 12)
+
+        let c2 = CreditCardEngine.allocateInvoice(forPurchaseDate: onBestPurchaseDay, card: card, calendar: calendar)
+        XCTAssertEqual(c2.year, 2027)
+        XCTAssertEqual(c2.month, 1)
+    }
+
+    @MainActor
+    func testCreditCardInstallmentsExactCentsCompetenceAndZeroDoubleCounting() async throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        store.createAccount(name: "Conta Itaú", initialBalance: 10000.0)
+        let accountId = store.accounts.first!.id
+        let categoryId = store.categories.first(where: { $0.type == .expense })!.id
+
+        let card = store.addCreditCard(
+            name: "Cartão Itaú",
+            totalLimit: 5000.0,
+            closingDay: 25,
+            dueDay: 5,
+            defaultPaymentAccountId: accountId
+        )
+
+        var comps = Calendar.current.dateComponents([.year, .month], from: store.selectedMonth)
+        comps.day = 10
+        comps.hour = 12
+        let purchaseDate = Calendar.current.date(from: comps)!
+
+        let created = store.createCreditCardInstallments(
+            name: "Compra Notebook",
+            totalAmount: 100.0,
+            purchaseDate: purchaseDate,
+            categoryId: categoryId,
+            cardId: card.id,
+            installmentsCount: 3
+        )
+
+        XCTAssertEqual(created.count, 3)
+        let sum = created.reduce(0.0) { $0 + $1.amount }
+        XCTAssertEqual(sum, 100.0, accuracy: 0.001)
+
+        // Compras no cartão NÃO debitam conta bancária (Regime de Competência entra em despesa/orçamento)
+        XCTAssertEqual(store.accountBalance(for: accountId), 10000.0, accuracy: 0.001)
+        XCTAssertEqual(store.usedLimit(for: card.id), 100.0, accuracy: 0.001)
+        XCTAssertEqual(store.availableLimit(for: card.id), 4900.0, accuracy: 0.001)
+
+        let cycle = CreditCardEngine.allocateInvoice(forPurchaseDate: purchaseDate, card: card, calendar: store.calendar)
+        let summaryBefore = store.invoiceSummary(for: card.id, year: cycle.year, month: cycle.month)!
+        XCTAssertEqual(summaryBefore.totalAmount, created[0].amount, accuracy: 0.001)
+
+        // Adiciona compra à vista na mesma fatura e verifica atualização dinâmica
+        let extraTx = store.createTransaction(
+            name: "Uber",
+            amount: 50.0,
+            date: purchaseDate,
+            type: .expense,
+            isPaid: false,
+            categoryId: categoryId,
+            accountId: card.id,
+            creditCardId: card.id
+        )
+        XCTAssertTrue(extraTx.isCreditCardExpense)
+        let summaryUpdated = store.invoiceSummary(for: card.id, year: cycle.year, month: cycle.month)!
+        XCTAssertEqual(summaryUpdated.totalAmount, created[0].amount + 50.0, accuracy: 0.001)
+
+        // Pagamento da fatura debita conta bancária e restaura limite correspondente sem dobrar despesa de categoria
+        let categoryBreakdown = store.categoryBreakdown(for: purchaseDate, type: .expense)
+        let paidOk = store.payCreditCardInvoice(
+            cardId: card.id,
+            year: cycle.year,
+            month: cycle.month,
+            fromAccountId: accountId,
+            amount: summaryUpdated.totalAmount,
+            paymentDate: purchaseDate
+        )
+        XCTAssertTrue(paidOk)
+        XCTAssertEqual(store.accountBalance(for: accountId), 10000.0 - summaryUpdated.totalAmount, accuracy: 0.001)
+        XCTAssertEqual(store.usedLimit(for: card.id), 100.0 - created[0].amount, accuracy: 0.001)
+
+        let categoryBreakdownAfter = store.categoryBreakdown(for: purchaseDate, type: .expense)
+        XCTAssertEqual(
+            categoryBreakdown.reduce(0.0) { $0 + $1.total },
+            categoryBreakdownAfter.reduce(0.0) { $0 + $1.total },
+            accuracy: 0.001,
+            "Pagamento da fatura NÃO pode causar contagem dupla nas categorias"
+        )
+
+        // Persistência local após aguardar fila de persistência assíncrona e recarregar
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let reloaded = FinancialDataStore(customFileURL: tempDatabaseURL)
+        XCTAssertEqual(reloaded.creditCards.count, 1)
+        XCTAssertEqual(reloaded.creditCardInvoices.count, 3)
+        XCTAssertTrue(reloaded.creditCardInvoices.first(where: { $0.yearMonthKey == cycle.yearMonthKey })?.isPaid ?? false)
+    }
+
+    @MainActor
+    func testSyncDeltasContainerDecodesCreditCardsAndInvoices() throws {
+        let json = """
+        {
+          "credit_cards": [
+            {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "name": "Nubank Ultravioleta",
+              "total_limit": 12000.0,
+              "closing_day": 5,
+              "best_purchase_day": 6,
+              "due_day": 12,
+              "brand": "Mastercard"
+            }
+          ],
+          "credit_card_invoices": [
+            {
+              "id": "22222222-2222-2222-2222-222222222222",
+              "credit_card_id": "11111111-1111-1111-1111-111111111111",
+              "year": 2026,
+              "month": 11,
+              "is_paid": false
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let container = try JSONDecoder().decode(SyncDeltasContainerDTO.self, from: json)
+        XCTAssertEqual(container.creditCards?.count, 1)
+        XCTAssertEqual(container.creditCards?.first?.name, "Nubank Ultravioleta")
+        XCTAssertEqual(container.creditCardInvoices?.count, 1)
+        XCTAssertEqual(container.creditCardInvoices?.first?.yearMonthKey, 202611)
+    }
 }
