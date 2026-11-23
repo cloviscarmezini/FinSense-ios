@@ -41,6 +41,10 @@ public struct ContentView: View {
             syncService.store = store
             syncService.authService = authService
             syncService.evaluateInitialStatus()
+            syncService.setAppActive(scenePhase == .active)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            syncService.setAppActive(newPhase == .active)
         }
     }
 

@@ -87,7 +87,7 @@ public struct CloudSyncSettingsView: View {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle())
                         } else {
-                            Text("Sincronizar Agora")
+                            Text(syncService.hasRemoteUpdates ? "Atualizar da Nuvem" : "Sincronizar Agora")
                                 .bold()
                         }
                         Spacer()
@@ -133,6 +133,7 @@ public struct CloudSyncSettingsView: View {
         switch syncService.syncStatus {
         case .synced: return "Sincronizado"
         case .syncing: return "Sincronizando..."
+        case .remoteUpdatesAvailable(let rev): return "Atualizações na nuvem (rev. \(rev))"
         case .outOfSync(let count, let reason): return "\(count) pendente(s) • \(reason)"
         case .authError(let msg): return "Erro de autenticação: \(msg)"
         case .disabled: return "Desativado"
@@ -143,6 +144,7 @@ public struct CloudSyncSettingsView: View {
         switch syncService.syncStatus {
         case .synced: return Color(hex: "#10B981")
         case .syncing: return Color(hex: "#0284C7")
+        case .remoteUpdatesAvailable: return Color(hex: "#0EA5E9")
         case .outOfSync: return Color(hex: "#F59E0B")
         case .authError: return Color(hex: "#EF4444")
         case .disabled: return Color.secondary

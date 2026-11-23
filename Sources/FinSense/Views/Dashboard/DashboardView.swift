@@ -184,9 +184,18 @@ public struct DashboardView: View {
                                     .progressViewStyle(CircularProgressViewStyle())
                                     .scaleEffect(0.7)
                             } else {
-                                Image(systemName: syncService.syncStatus.iconSymbol)
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(syncStatusColor)
+                                ZStack(alignment: .topTrailing) {
+                                    Image(systemName: syncService.syncStatus.iconSymbol)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(syncStatusColor)
+
+                                    if syncService.hasRemoteUpdates {
+                                        Circle()
+                                            .fill(Color(hex: "#F59E0B"))
+                                            .frame(width: 6, height: 6)
+                                            .offset(x: 2, y: -2)
+                                    }
+                                }
                             }
 
                             if syncService.pendingMutationsCount > 0 {
@@ -822,6 +831,7 @@ public struct DashboardView: View {
         switch syncService.syncStatus {
         case .synced: return Color(hex: "#10B981")
         case .syncing: return Color(hex: "#0284C7")
+        case .remoteUpdatesAvailable: return Color(hex: "#0EA5E9")
         case .outOfSync: return Color(hex: "#F59E0B")
         case .authError: return Color(hex: "#EF4444")
         case .disabled: return Color.secondary
