@@ -32,7 +32,16 @@ public struct FinanceHubMainView: View {
                                 iconSymbol: "building.columns.fill",
                                 iconColor: "#0284C7"
                             ) {
-                                AccountsManagerView(store: store)
+                                AccountsManagerView(store: store, syncService: syncService)
+                            }
+
+                            HubNavigationCard(
+                                title: "Cartões de Crédito",
+                                subtitle: "\(store.creditCards.count) \(store.creditCards.count == 1 ? "cartão" : "cartões") • Limite disp.: \(AppFormatters.currency(store.creditCards.reduce(0) { $0 + store.availableLimit(for: $1.id) }))",
+                                iconSymbol: "creditcard.fill",
+                                iconColor: "#6366F1"
+                            ) {
+                                CreditCardsManagerView(store: store, syncService: syncService)
                             }
 
                             HubNavigationCard(

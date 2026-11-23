@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CC01A0012D9E000100000002 /* CreditCardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC01A0012D9E000100000001 /* CreditCardModel.swift */; };
+		CC01A0012D9E000100000004 /* CreditCardEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC01A0012D9E000100000003 /* CreditCardEngine.swift */; };
+		CC01A0012D9E000100000006 /* CreditCardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC01A0012D9E000100000005 /* CreditCardsView.swift */; };
 		E1A0F1112D9E000100000006 /* SplashScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000005 /* SplashScreenView.swift */; };
 		E1A0F1112D9E000100000004 /* BRLCurrencyTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000003 /* BRLCurrencyTextField.swift */; };
 		E1A0F1112D9E000100000002 /* IncomeCommitmentDonutCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A0F1112D9E000100000001 /* IncomeCommitmentDonutCard.swift */; };
@@ -57,6 +60,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CC01A0012D9E000100000001 /* CreditCardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditCardModel.swift; path = Sources/FinSense/Models/CreditCardModel.swift; sourceTree = "<group>"; };
+		CC01A0012D9E000100000003 /* CreditCardEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditCardEngine.swift; path = Sources/FinSense/Services/CreditCardEngine.swift; sourceTree = "<group>"; };
+		CC01A0012D9E000100000005 /* CreditCardsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditCardsView.swift; path = Sources/FinSense/Views/FinanceHub/CreditCardsView.swift; sourceTree = "<group>"; };
 		043607B6F5642D41587B79B5 /* CreditContractsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CreditContractsView.swift; path = Sources/FinSense/Views/FinanceHub/CreditContractsView.swift; sourceTree = "<group>"; };
 		0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryQuotasView.swift; path = Sources/FinSense/Views/FinanceHub/CategoryQuotasView.swift; sourceTree = "<group>"; };
 		0F231D3699EC6B2A9D21D922 /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorTokens.swift; path = Sources/FinSense/DesignSystem/ColorTokens.swift; sourceTree = "<group>"; };
@@ -172,6 +178,9 @@
 				D51F6F05C39DBBE714D8F732 /* CategoriesManagerView.swift */,
 				0C2DC01EDBC2AE03A3036D3E /* CategoryQuotasView.swift */,
 				043607B6F5642D41587B79B5 /* CreditContractsView.swift */,
+				CC01A0012D9E000100000001 /* CreditCardModel.swift */,
+				CC01A0012D9E000100000003 /* CreditCardEngine.swift */,
+				CC01A0012D9E000100000005 /* CreditCardsView.swift */,
 				5DF2B59795B3F82104EE6606 /* DebtsManagerView.swift */,
 				A51FB00124C05A2A1E8E04AC /* FinanceHubMainView.swift */,
 				303E144C25198283EA55CD4C /* InvestmentsManagerView.swift */,
@@ -258,6 +267,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC01A0012D9E000100000002 /* CreditCardModel.swift in Sources */,
+				CC01A0012D9E000100000004 /* CreditCardEngine.swift in Sources */,
+				CC01A0012D9E000100000006 /* CreditCardsView.swift in Sources */,
 				FBED9FB27D8EC9D2B96B0ADF /* ContentView.swift in Sources */,
 				C457776EF42E5678BF93A963 /* FinSenseApp.swift in Sources */,
 				BE79437AF4CF3BA1608898BF /* ColorTokens.swift in Sources */,

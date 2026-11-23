@@ -10,6 +10,7 @@ public struct DashboardView: View {
 
     @State private var isAddTransactionSheetPresented: Bool = false
     @State private var isAddAccountSheetPresented: Bool = false
+    @State private var isAddCardSheetPresented: Bool = false
     @State private var isMonthPickerPresented: Bool = false
     @State private var isProvisionsSheetPresented: Bool = false
 
@@ -87,6 +88,9 @@ public struct DashboardView: View {
                             isAddAccountSheetPresented = true
                         }
 
+                        // Carrossel Horizontal de Cartões de Crédito
+                        creditCardsCarouselSection
+
                         // Saúde Financeira
                         FinancialHealthCard(store: store, selectedMonth: store.selectedMonth)
                             .padding(.horizontal, 20)
@@ -103,6 +107,9 @@ public struct DashboardView: View {
             }
             .sheet(isPresented: $isAddAccountSheetPresented) {
                 AccountEditorSheet(store: store)
+            }
+            .sheet(isPresented: $isAddCardSheetPresented) {
+                CreditCardEditorSheet(store: store)
             }
             .sheet(isPresented: $isMonthPickerPresented) {
                 MonthPickerSheet(selectedMonth: $store.selectedMonth)
@@ -818,6 +825,168 @@ public struct DashboardView: View {
         case .outOfSync: return Color(hex: "#F59E0B")
         case .authError: return Color(hex: "#EF4444")
         case .disabled: return Color.secondary
+        }
+    }
+
+    // MARK: - Carrossel de Cartões de Crédito
+
+    private var creditCardsCarouselSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Meus Cartões")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.primary)
+
+                Spacer()
+
+                NavigationLink {
+                    CreditCardsManagerView(store: store, syncService: syncService)
+                } label: {
+                    Text("Gerenciar")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6366F1"))
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isAddCardSheetPresented = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#6366F1"))
+                }
+            }
+            .padding(.horizontal, 20)
+
+            if store.creditCards.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isAddCardSheetPresented = true
+                } label: {
+                    LiquidGlassCard(cornerRadius: 18, padding: 14) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: "#6366F1").opacity(0.18))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "creditcard.fill")
+                                    .foregroundStyle(Color(hex: "#6366F1"))
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Adicionar Cartão de Crédito")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.primary)
+                                Text("Controle faturas, limites e compras parceladas sem contagem dupla")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.secondary)
+                                    .lineLimit(2)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 20)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(store.creditCards) { card in
+                            let used = store.usedLimit(for: card.id)
+                            let available = store.availableLimit(for: card.id)
+                            let ratio = card.totalLimit > 0 ? min(1.0, max(0.0, used / card.totalLimit)) : 0.0
+                            let currentCycle = CreditCardEngine.allocateInvoice(
+                                forPurchaseDate: store.effectiveCurrentDate,
+                                card: card,
+                                calendar: store.calendar
+                            )
+                            let invoiceSummary = store.invoiceSummary(for: card.id, year: currentCycle.year, month: currentCycle.month)
+
+                            NavigationLink {
+                                CreditCardsManagerView(store: store, syncService: syncService, initialCardId: card.id)
+                            } label: {
+                                LiquidGlassCard(cornerRadius: 18, padding: 14) {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        HStack {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(Color(hex: card.colorHex).opacity(0.22))
+                                                    .frame(width: 34, height: 34)
+                                                Image(systemName: card.iconSymbol)
+                                                    .font(.system(size: 14, weight: .semibold))
+                                                    .foregroundStyle(Color(hex: card.colorHex))
+                                            }
+
+                                            Spacer()
+
+                                            if let summary = invoiceSummary {
+                                                Text(summary.status.rawValue)
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .padding(.horizontal, 7)
+                                                    .padding(.vertical, 3)
+                                                    .background(Capsule().fill(Color(hex: summary.status.colorHex).opacity(0.18)))
+                                                    .foregroundStyle(Color(hex: summary.status.colorHex))
+                                            }
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(card.name)
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundStyle(Color.primary)
+                                                .lineLimit(1)
+                                            Text("\(card.brand.shortBadge) • Fecha \(card.closingDay) • Vence \(card.dueDay)")
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(Color.secondary)
+                                                .lineLimit(1)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text("Fatura \(CreditCardEngine.shortInvoiceLabel(year: currentCycle.year, month: currentCycle.month, calendar: store.calendar))")
+                                                    .font(.system(size: 10))
+                                                    .foregroundStyle(Color.secondary)
+                                                Spacer()
+                                                Text(AppFormatters.currency(invoiceSummary?.totalAmount ?? 0))
+                                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(Color.primary)
+                                            }
+
+                                            GeometryReader { geo in
+                                                ZStack(alignment: .leading) {
+                                                    Capsule()
+                                                        .fill(Color.primary.opacity(0.1))
+                                                    Capsule()
+                                                        .fill(Color(hex: ratio > 0.85 ? "#EF4444" : card.colorHex))
+                                                        .frame(width: geo.size.width * ratio)
+                                                }
+                                            }
+                                            .frame(height: 5)
+
+                                            HStack {
+                                                Text("Disp.")
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(Color.secondary)
+                                                Spacer()
+                                                Text(AppFormatters.currency(available))
+                                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                                    .foregroundStyle(available >= 0 ? Color(hex: "#22C55E") : Color(hex: "#EF4444"))
+                                            }
+                                        }
+                                    }
+                                    .frame(width: 192)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
         }
     }
 }

@@ -15,6 +15,12 @@ public struct TransactionsListView: View {
     @ObservedObject var syncService: CloudSyncService
     @ObservedObject var authService: AuthService
 
+    private struct InvoicePaymentSheetContext: Identifiable {
+        let id = UUID()
+        let card: CreditCard
+        let summary: CreditCardInvoiceSummary
+    }
+
     @State private var selectedFilter: TransactionFilterTab = .all
     @State private var searchText: String = ""
     @State private var isSearchVisible: Bool = false
@@ -22,6 +28,7 @@ public struct TransactionsListView: View {
     @State private var isMonthPickerPresented: Bool = false
     @State private var editingTransaction: FinancialTransaction? = nil
     @State private var confirmingInstallmentPaymentTx: FinancialTransaction? = nil
+    @State private var payingInvoiceContext: InvoicePaymentSheetContext? = nil
     @State private var transactionPendingPaymentToggle: FinancialTransaction? = nil
     @State private var transactionPendingDeletion: FinancialTransaction? = nil
     @State private var isBulkSelectionMode: Bool = false
@@ -171,6 +178,17 @@ public struct TransactionsListView: View {
                                                 },
                                                 onTogglePaid: {
                                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                                    if tx.isCreditCardInvoicePayment && !tx.isPaid,
+                                                       let cardId = tx.creditCardId,
+                                                       let card = store.creditCard(for: cardId) {
+                                                        let ymKey = tx.creditCardInvoiceYearMonthKey
+                                                            ?? (store.calendar.component(.year, from: tx.date) * 100 + store.calendar.component(.month, from: tx.date))
+                                                        let comps = CreditCardEngine.yearMonthComponents(fromKey: ymKey)
+                                                        if let summary = store.invoiceSummary(for: cardId, year: comps.year, month: comps.month) {
+                                                            payingInvoiceContext = InvoicePaymentSheetContext(card: card, summary: summary)
+                                                            return
+                                                        }
+                                                    }
                                                     if !tx.isPaid && store.installmentCorrectionBreakdown(for: tx) != nil {
                                                         confirmingInstallmentPaymentTx = tx
                                                     } else {
@@ -229,6 +247,9 @@ public struct TransactionsListView: View {
             }
             .sheet(item: $confirmingInstallmentPaymentTx) { tx in
                 ConfirmInstallmentPaymentModalSheet(store: store, transaction: tx)
+            }
+            .sheet(item: $payingInvoiceContext) { ctx in
+                PayCreditCardInvoiceIOSSheet(store: store, card: ctx.card, summary: ctx.summary)
             }
             .alert(
                 transactionPendingPaymentToggle.map { paymentAlertTitle(for: $0) } ?? "",
@@ -415,6 +436,7 @@ public struct TransactionsListView: View {
             list = list.filter {
                 $0.name.lowercased().contains(query) ||
                 $0.details.lowercased().contains(query) ||
+                (store.creditCard(for: $0.creditCardId)?.name.lowercased().contains(query) ?? false) ||
                 String(format: "%.2f", $0.amount).contains(query)
             }
         }
@@ -435,7 +457,7 @@ public struct TransactionsListView: View {
 
     private var visiblePendingTransactions: [FinancialTransaction] {
         filteredGroupedDays.flatMap(\.transactions).filter {
-            !$0.isPaid && store.transactionProjectionStatus(for: $0) != .shadowed
+            !$0.isPaid && !$0.isCreditCardExpense && store.transactionProjectionStatus(for: $0) != .shadowed
         }
     }
 
@@ -506,15 +528,15 @@ public struct TransactionsListView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             isBulkSelectionMode = true
-            if !tx.isPaid && store.transactionProjectionStatus(for: tx) != .shadowed {
+            if !tx.isPaid && !tx.isCreditCardExpense && store.transactionProjectionStatus(for: tx) != .shadowed {
                 selectedTransactionIds.insert(tx.id)
             }
         }
     }
 
     private func toggleBulkSelection(for tx: FinancialTransaction) {
-        // Ignora transações já pagas ou suprimidas para pagamento em massa
-        guard !tx.isPaid && store.transactionProjectionStatus(for: tx) != .shadowed else {
+        // Ignora transações já pagas, de cartão (liquidadas pela fatura) ou suprimidas para pagamento em massa
+        guard !tx.isPaid && !tx.isCreditCardExpense && store.transactionProjectionStatus(for: tx) != .shadowed else {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
@@ -639,12 +661,13 @@ public struct TransactionRow: View {
     public var body: some View {
         let cat = store.category(for: transaction.categoryId)
         let acc = store.account(for: transaction.accountId)
+        let card = store.creditCard(for: transaction.creditCardId)
         let projStatus = store.transactionProjectionStatus(for: transaction)
         let isFullPayoffTx = store.isPlannedAmortizationFullPayoff(transaction)
         let effectiveAmount = store.effectiveTransactionAmount(for: transaction)
         let isShadowed = projStatus == .shadowed
         let correctionBreakdown = store.installmentCorrectionBreakdown(for: transaction)
-        let isEligibleForBulk = !transaction.isPaid && !isShadowed
+        let isEligibleForBulk = !transaction.isPaid && !isShadowed && !transaction.isCreditCardExpense
 
         ZStack(alignment: .trailing) {
             LiquidGlassCard(cornerRadius: 16, padding: 12) {
@@ -681,6 +704,27 @@ public struct TransactionRow: View {
                                     Text(acc.name)
                                         .font(.system(size: 11))
                                         .foregroundStyle(Color.secondary)
+                                } else if let card, transaction.isCreditCardExpense {
+                                    Text("💳 \(card.name)")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Color(hex: card.colorHex))
+                                }
+
+                                if transaction.isCreditCardExpense, let ymKey = transaction.creditCardInvoiceYearMonthKey {
+                                    let comps = CreditCardEngine.yearMonthComponents(fromKey: ymKey)
+                                    Text("Fatura \(CreditCardEngine.shortInvoiceLabel(year: comps.year, month: comps.month, calendar: store.calendar))")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: "#6366F1").opacity(0.16)))
+                                        .foregroundStyle(Color(hex: "#6366F1"))
+                                } else if transaction.isCreditCardInvoicePayment {
+                                    Text("Pagamento de Fatura")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: "#6366F1").opacity(0.16)))
+                                        .foregroundStyle(Color(hex: "#6366F1"))
                                 }
 
                                 if let badge = transaction.installmentBadge {
@@ -754,21 +798,36 @@ public struct TransactionRow: View {
                                     .font(.system(size: 10, design: .monospaced))
                                     .strikethrough(true, color: .secondary)
                                     .foregroundStyle(Color.secondary)
+                            } else if transaction.isCreditCardExpense {
+                                let invStatus: CreditCardInvoiceStatus = {
+                                    if let cardId = transaction.creditCardId, let ymKey = transaction.creditCardInvoiceYearMonthKey {
+                                        let comps = CreditCardEngine.yearMonthComponents(fromKey: ymKey)
+                                        return store.invoiceSummary(for: cardId, year: comps.year, month: comps.month)?.status ?? .open
+                                    }
+                                    return .open
+                                }()
+                                Text("Na Fatura (\(invStatus.rawValue))")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Color(hex: invStatus.colorHex))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color(hex: invStatus.colorHex).opacity(0.16)))
                             } else if !isBulkSelectionMode, let onTogglePaid {
                                 Button {
                                     guard !isDraggingHorizontally, Date() > suppressPayButtonUntil else { return }
                                     onTogglePaid()
                                 } label: {
                                     let isPaid = transaction.isPaid
+                                    let isInvoicePayment = transaction.isCreditCardInvoicePayment
                                     let labelText = isPaid
                                         ? (transaction.type == .expense ? "Pago" : "Recebido")
-                                        : (transaction.type == .expense ? "Pagar" : "Receber")
+                                        : (isInvoicePayment ? "Pagar Fatura" : (transaction.type == .expense ? "Pagar" : "Receber"))
                                     let iconName = isPaid
                                         ? "checkmark.circle.fill"
                                         : (transaction.type == .expense ? "creditcard.fill" : "arrow.down.circle.fill")
                                     let accentHex = isPaid
                                         ? "#10B981"
-                                        : (transaction.type == .expense ? "#0284C7" : "#10B981")
+                                        : (isInvoicePayment ? "#6366F1" : (transaction.type == .expense ? "#0284C7" : "#10B981"))
 
                                     HStack(spacing: 4) {
                                         Image(systemName: iconName)
