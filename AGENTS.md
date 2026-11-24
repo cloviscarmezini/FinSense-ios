@@ -11,12 +11,14 @@
 
 1. **Revisão e Manutenção Contínua deste Manifesto:**  
    Sempre que implementar novas telas, ajustar componentes de UI, alterar modelos de dados ou modificar regras de negócio, você **DEVE** revisar e atualizar este manifesto (`AGENTS.md`), mantendo-o sincronizado com o código.
-2. **Commits Semânticos Obrigatórios:**  
-   Toda alteração de código ou configuração deve ser acompanhada de commit semântico no padrão *Conventional Commits* (ex.: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `perf:`). **Nunca** faça commits genéricos e **nunca** suba alterações para repositórios remotos (`git push`) sem aprovação explícita.
+2. **Commits Semânticos Obrigatórios & Proibição de `git push`:**  
+   Toda alteração de código ou configuração deve ser acompanhada de commit semântico no padrão *Conventional Commits* (ex.: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `perf:`). **NUNCA execute `git push`** sob hipótese alguma para branches remotas; os commits devem permanecer estritamente no repositório local.
 3. **Validação de Compilação e Testes no Simulador iOS:**  
    Antes de finalizar tarefas, execute o build do projeto no simulador (`xcodebuild build -project FinSense.xcodeproj -scheme Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`) e valide a suíte de testes com `xcodebuild test`.
 4. **Fidelidade ao Design System Liquid Glass:**  
    O app adota o sistema visual *Modern Liquid Glass*: cards translúcidos com bordas suaves, efeitos de desfoque ultramodernos, paleta com contraste acessível, suporte total a gestos de swipe e sem conflito de toques em botões de ação rápida.
+5. **Paridade com a API e Desktop:**  
+   Novas entidades ou campos adicionados ao aplicativo iOS devem manter paridade estrita com as mutações e esquemas do `FinSense-api` e do `FinSense` Desktop.
 
 ---
 

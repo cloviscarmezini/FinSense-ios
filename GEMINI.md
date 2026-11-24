@@ -6,4 +6,5 @@ Consulte o manifesto e regras canônicas completas para agentes em:
 ### Diretrizes Obrigatórias:
 1. Todas as alterações, novas telas ou ajustes devem atualizar o manifesto `AGENTS.md`.
 2. Toda alteração deve ser finalizada com um commit semântico (Conventional Commits).
-3. Respeite o design system Liquid Glass e as regras de Competência vs Caixa e Vale Intramês.
+3. **NUNCA execute `git push`** sob hipótese alguma.
+4. Respeite o design system Liquid Glass e as regras de Competência vs Caixa e Vale Intramês.
