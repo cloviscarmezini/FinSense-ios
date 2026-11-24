@@ -1022,4 +1022,47 @@ final class FinSenseTests: XCTestCase {
             "Faltarão \(AppFormatters.currency(50.0)) no dia 06/01 e \(AppFormatters.currency(200.0)) no dia 25/01"
         )
     }
+
+    @MainActor
+    func testApplePayCardMatchingAndTransactionRecording() async throws {
+        let store = FinancialDataStore(customFileURL: tempDatabaseURL)
+        store.createAccount(name: "Conta Itaú", initialBalance: 2000.0)
+        let accId = store.accounts.first!.id
+
+        let card = store.addCreditCard(
+            name: "Nubank Ultravioleta",
+            totalLimit: 10000,
+            closingDay: 25,
+            dueDay: 5,
+            defaultPaymentAccountId: accId,
+            lastFourDigits: "8842"
+        )
+
+        let coordinator = ApplePayAutomationCoordinator()
+        coordinator.configure(store: store, syncService: CloudSyncService(store: store))
+        coordinator.addOrUpdateAlias(walletCardName: "Apple Card Pessoal", targetCreditCardId: card.id, targetAccountId: nil)
+
+        // 1. Match por apelido configurável
+        let targetAlias = coordinator.resolveTarget(forWalletCardName: "apple card pessoal", in: store)
+        XCTAssertEqual(targetAlias.creditCardId, card.id)
+        XCTAssertFalse(targetAlias.usedFallback)
+
+        // 2. Match inteligente pelos últimos 4 dígitos
+        let targetDigits = coordinator.resolveTarget(forWalletCardName: "Mastercard 8842", in: store)
+        XCTAssertEqual(targetDigits.creditCardId, card.id)
+        XCTAssertFalse(targetDigits.usedFallback)
+
+        // 3. Registro automático com needsReview = true e sourceApp = "apple_pay"
+        let recorded = await coordinator.recordApplePayTransaction(
+            amount: 149.90,
+            merchant: "Supermercado Zona Sul",
+            cardName: "Nubank",
+            date: Date(),
+            triggerBackgroundSync: false
+        )
+        XCTAssertNotNil(recorded)
+        XCTAssertEqual(recorded?.needsReview, true)
+        XCTAssertEqual(recorded?.sourceApp, "apple_pay")
+        XCTAssertEqual(recorded?.creditCardId, card.id)
+    }
 }

@@ -40,6 +40,7 @@ public struct BankAccount: Identifiable, Codable, Hashable {
     public var initialBalance: Double
     public var agency: String
     public var accountNumber: String
+    public var currencyCode: String
     public var createdAt: Date
 
     public init(
@@ -52,6 +53,7 @@ public struct BankAccount: Identifiable, Codable, Hashable {
         initialBalance: Double = 0.0,
         agency: String = "",
         accountNumber: String = "",
+        currencyCode: String = "BRL",
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -63,11 +65,12 @@ public struct BankAccount: Identifiable, Codable, Hashable {
         self.initialBalance = initialBalance
         self.agency = agency
         self.accountNumber = accountNumber
+        self.currencyCode = currencyCode
         self.createdAt = createdAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, bankPresetId, customImagePath, iconSymbol, colorHex, initialBalance, agency, accountNumber, createdAt
+        case id, name, bankPresetId, customImagePath, iconSymbol, colorHex, initialBalance, agency, accountNumber, currencyCode, createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -87,6 +90,8 @@ public struct BankAccount: Identifiable, Codable, Hashable {
         self.agency = (try? c.decodeIfPresent(String.self, forKey: AnyKey("agency"))) ?? ""
         self.accountNumber = (try? c.decodeIfPresent(String.self, forKey: AnyKey("accountNumber")))
             ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("account_number"))) ?? ""
+        self.currencyCode = (try? c.decodeIfPresent(String.self, forKey: AnyKey("currencyCode")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("currency_code"))) ?? "BRL"
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -102,6 +107,7 @@ public struct BankAccount: Identifiable, Codable, Hashable {
         try c.encode(initialBalance, forKey: .initialBalance)
         try c.encode(agency, forKey: .agency)
         try c.encode(accountNumber, forKey: .accountNumber)
+        try c.encode(currencyCode, forKey: .currencyCode)
         try c.encode(createdAt, forKey: .createdAt)
     }
 }

@@ -17,6 +17,7 @@ public struct ContentView: View {
         _store = StateObject(wrappedValue: s)
         _authService = StateObject(wrappedValue: auth)
         _syncService = StateObject(wrappedValue: sync)
+        ApplePayAutomationCoordinator.shared.configure(store: s, syncService: sync)
     }
 
     public var body: some View {

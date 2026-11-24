@@ -38,13 +38,16 @@ FinSense-ios (Mobile App)
 │   ├── Services/
 │   │   ├── FinancialDataStore.swift   # Store central (@MainActor ObservableObject) e persistência
 │   │   ├── CloudSyncService.swift     # Sincronização delta two-way offline-first e status leve
+│   │   ├── ApplePayAutomationService.swift # Matching de cartões/alias para compras Apple Pay
 │   │   ├── AuthService.swift          # Gestão de sessão JWT e renovação perene
 │   │   └── KeychainHelper.swift       # Armazenamento seguro de credenciais e tokens
+│   ├── Intents/
+│   │   └── LogApplePayTransactionIntent.swift # App Intent & AppShortcutsProvider (Atalhos / Carteira Apple)
 │   └── Views/
 │       ├── Dashboard/
 │       │   └── DashboardView.swift    # Resumo executivo, carrossel de faturas e grid de KPIs
 │       ├── Transactions/
-│       │   └── TransactionsListView.swift # Extrato com pílulas de filtro, linha de corte e swipe
+│       │   └── TransactionsListView.swift # Extrato com pílulas de filtro, badge Revisar e swipe
 │       ├── CreditCards/
 │       │   └── CreditCardsListView.swift  # Lista de cartões, faturas abertas/fechadas e pagamento
 │       ├── Contracts/
@@ -52,6 +55,7 @@ FinSense-ios (Mobile App)
 │       ├── Provisions/
 │       │   └── ProvisionsView.swift   # Tetos orçamentários e cotas por categoria
 │       └── Settings/
+│           ├── ApplePaySetupView.swift # Guia e mapeamento de aliases Apple Pay
 │           └── SettingsView.swift     # Status de sincronização, perfil e preferências
 ├── Tests/FinSenseTests/
 │   └── FinSenseTests.swift            # Suíte automatizada de testes unitários do iOS
@@ -105,6 +109,11 @@ FinSense-ios (Mobile App)
 - Persistência offline-first com fila local de mutações.
 - Consulta ultra-rápida de status (`/api/v1/sync/status`) com ETag para atualizar o ícone de sincronização na barra superior sem travar a navegação.
 - Atualização manual via toque no cabeçalho ou pull-to-refresh.
+
+### 2.6. Automação Apple Pay + App Intents & Paridade de Modelo
+- `LogApplePayTransactionIntent` e `FinSenseShortcuts` permitem disparo automático pelo app Atalhos (gatilho Wallet / Transação) passando valor, estabelecimento, nome do cartão e data.
+- `ApplePayAutomationCoordinator` faz matching case/diacritic-insensitive de alias, nome do cartão, 4 dígitos finais, bandeira e conta configurável, persiste em disco (`flushPersistenceToDisk`), cria transação com `needsReview = true` e `sourceApp = "apple_pay"` e dispara `performManualSync()` em background.
+- Modelos `BankAccount`, `InvestmentItem` e `FinancialTransaction` suportam `currencyCode` (default `"BRL"`), `.reimbursementReceipt` e campos de reembolso para paridade completa com API e Desktop.
 
 ---
 

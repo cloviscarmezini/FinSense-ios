@@ -56,6 +56,7 @@ public struct InvestmentItem: Identifiable, Codable, Hashable {
     public var iconSymbol: String
     public var colorHex: String
     public var notes: String
+    public var currencyCode: String
     public var movements: [InvestmentMovement]
     public var createdAt: Date
 
@@ -69,6 +70,7 @@ public struct InvestmentItem: Identifiable, Codable, Hashable {
         iconSymbol: String = "chart.line.uptrend.xyaxis",
         colorHex: String = "#10B981",
         notes: String = "",
+        currencyCode: String = "BRL",
         movements: [InvestmentMovement] = [],
         createdAt: Date = Date()
     ) {
@@ -81,12 +83,13 @@ public struct InvestmentItem: Identifiable, Codable, Hashable {
         self.iconSymbol = iconSymbol
         self.colorHex = colorHex
         self.notes = notes
+        self.currencyCode = currencyCode
         self.movements = movements
         self.createdAt = createdAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, groupName, investmentAccountId, balance, showInConsolidated, iconSymbol, colorHex, notes, movements, createdAt
+        case id, name, groupName, investmentAccountId, balance, showInConsolidated, iconSymbol, colorHex, notes, currencyCode, movements, createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -108,6 +111,8 @@ public struct InvestmentItem: Identifiable, Codable, Hashable {
         self.colorHex = (try? c.decodeIfPresent(String.self, forKey: AnyKey("colorHex")))
             ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("color_hex"))) ?? "#10B981"
         self.notes = (try? c.decodeIfPresent(String.self, forKey: AnyKey("notes"))) ?? ""
+        self.currencyCode = (try? c.decodeIfPresent(String.self, forKey: AnyKey("currencyCode")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("currency_code"))) ?? "BRL"
         self.movements = (try? c.decodeIfPresent([InvestmentMovement].self, forKey: AnyKey("movements"))) ?? []
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
@@ -124,6 +129,7 @@ public struct InvestmentItem: Identifiable, Codable, Hashable {
         try c.encode(iconSymbol, forKey: .iconSymbol)
         try c.encode(colorHex, forKey: .colorHex)
         try c.encode(notes, forKey: .notes)
+        try c.encode(currencyCode, forKey: .currencyCode)
         try c.encode(movements, forKey: .movements)
         try c.encode(createdAt, forKey: .createdAt)
     }

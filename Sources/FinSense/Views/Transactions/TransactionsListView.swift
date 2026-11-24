@@ -838,6 +838,13 @@ public struct TransactionRow: View {
                                         .padding(.vertical, 1.5)
                                         .background(Capsule().fill(Color(hex: "#10B981").opacity(0.16)))
                                         .foregroundStyle(Color(hex: "#10B981"))
+                                } else if transaction.needsReview == true {
+                                    Text("Revisar")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color(hex: "#6366F1").opacity(0.20)))
+                                        .foregroundStyle(Color(hex: "#6366F1"))
                                 } else if !transaction.isPaid {
                                     Text("Pendente")
                                         .font(.system(size: 9, weight: .bold))

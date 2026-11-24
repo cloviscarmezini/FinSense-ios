@@ -78,6 +78,41 @@ public struct SettingsMainView: View {
                             .padding(.horizontal, 20)
                         }
 
+                        // MARK: - Automação Apple Pay (Atalhos)
+                        NavigationLink {
+                            ApplePaySetupView(store: store)
+                        } label: {
+                            LiquidGlassCard(cornerRadius: 18, padding: 16) {
+                                HStack(spacing: 14) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(Color(hex: "#10B981").opacity(0.18))
+                                            .frame(width: 42, height: 42)
+                                        Image(systemName: "wave.3.right.circle.fill")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundStyle(Color(hex: "#10B981"))
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Automação Apple Pay")
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundStyle(Color.primary)
+                                        Text("Mapeamento de cartões Wallet e guia App Atalhos")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Color.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.secondary.opacity(0.7))
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+
                         // MARK: - Privacidade & Visual
                         LiquidGlassCard(cornerRadius: 18, padding: 16) {
                             VStack(spacing: 12) {

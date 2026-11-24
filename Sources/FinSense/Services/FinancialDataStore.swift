@@ -391,6 +391,10 @@ public final class FinancialDataStore: ObservableObject {
         }
     }
 
+    public func flushPersistenceToDisk() {
+        diskPersistenceQueue.sync {}
+    }
+
     public func saveToDisk() {
         let snapshot = FinancialDatabaseSnapshot(
             schemaVersion: 3,
@@ -1085,7 +1089,10 @@ public final class FinancialDataStore: ObservableObject {
         baseInstallmentRegisteredAmount: Double? = nil,
         projectedInstallmentCorrectionAmount: Double? = nil,
         confirmedRealInterestCorrectionAmount: Double? = nil,
-        creditCardId: UUID? = nil
+        creditCardId: UUID? = nil,
+        needsReview: Bool? = nil,
+        sourceApp: String? = nil,
+        currencyCode: String? = nil
     ) -> FinancialTransaction {
         let effectiveCreditCardId: UUID? = (type == .expense && transactionOrigin != .creditCardInvoicePayment)
             ? (creditCardId ?? (creditCard(for: accountId)?.id))
@@ -1140,7 +1147,10 @@ public final class FinancialDataStore: ObservableObject {
             projectedInstallmentCorrectionAmount: projectedInstallmentCorrectionAmount,
             confirmedRealInterestCorrectionAmount: confirmedRealInterestCorrectionAmount,
             creditCardId: effectiveCreditCardId,
-            creditCardInvoiceYearMonthKey: allocatedCardYM
+            creditCardInvoiceYearMonthKey: allocatedCardYM,
+            needsReview: needsReview,
+            sourceApp: sourceApp,
+            currencyCode: currencyCode
         )
         transactions.append(tx)
         if let cid = effectiveCreditCardId, let ymKey = allocatedCardYM {
@@ -1479,6 +1489,17 @@ public final class FinancialDataStore: ObservableObject {
                 creditCardInvoices[invIdx].paidFromAccountId = nil
                 creditCardInvoices[invIdx].paymentTransactionId = nil
                 cloudSyncService?.recordLocalMutation(entityName: "credit_card_invoices", entityId: creditCardInvoices[invIdx].id, operation: .upsert, entity: creditCardInvoices[invIdx])
+            }
+
+        case .reimbursementReceipt:
+            if let origId = tx.linkedReimbursementTransactionId ?? tx.linkedEntityID,
+               let origIdx = transactions.firstIndex(where: { $0.id == origId }) {
+                let prevReceived = transactions[origIdx].reimbursementReceivedAmount ?? 0.0
+                let reverted = max(0.0, prevReceived - tx.amount)
+                transactions[origIdx].reimbursementReceivedAmount = reverted > 0.001 ? reverted : nil
+                let target = transactions[origIdx].reimbursableAmount ?? transactions[origIdx].amount
+                transactions[origIdx].isReimbursementSettled = reverted + 0.009 >= target
+                cloudSyncService?.recordLocalMutation(entityName: "financial_transactions", entityId: transactions[origIdx].id, operation: .upsert, entity: transactions[origIdx])
             }
 
         case .standard, .quotaAllocation, .internalTransfer:

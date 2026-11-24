@@ -110,6 +110,7 @@ public enum TransactionOrigin: String, Codable, CaseIterable, Identifiable, Hash
     case quotaAllocation
     case internalTransfer
     case creditCardInvoicePayment
+    case reimbursementReceipt
 
     public var id: String { rawValue }
 }
@@ -149,6 +150,17 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
     public var creditCardId: UUID?
     public var creditCardInvoiceYearMonthKey: Int?
     public var creditCardInvoiceId: UUID?
+    public var needsReview: Bool?
+    public var sourceApp: String?
+    public var isReimbursable: Bool?
+    public var reimbursableDebtor: String?
+    public var reimbursableAmount: Double?
+    public var reimbursementExpectedDate: Date?
+    public var reimbursementReceivedAmount: Double?
+    public var isReimbursementSettled: Bool?
+    public var linkedReimbursementTransactionId: UUID?
+    public var currencyCode: String?
+    public var exchangeRateToBRL: Double?
     public var createdAt: Date
 
     public var isCreditCardInvoicePayment: Bool {
@@ -194,6 +206,17 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         creditCardId: UUID? = nil,
         creditCardInvoiceYearMonthKey: Int? = nil,
         creditCardInvoiceId: UUID? = nil,
+        needsReview: Bool? = nil,
+        sourceApp: String? = nil,
+        isReimbursable: Bool? = nil,
+        reimbursableDebtor: String? = nil,
+        reimbursableAmount: Double? = nil,
+        reimbursementExpectedDate: Date? = nil,
+        reimbursementReceivedAmount: Double? = nil,
+        isReimbursementSettled: Bool? = nil,
+        linkedReimbursementTransactionId: UUID? = nil,
+        currencyCode: String? = nil,
+        exchangeRateToBRL: Double? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -230,6 +253,17 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         self.creditCardId = creditCardId
         self.creditCardInvoiceYearMonthKey = creditCardInvoiceYearMonthKey
         self.creditCardInvoiceId = creditCardInvoiceId
+        self.needsReview = needsReview
+        self.sourceApp = sourceApp
+        self.isReimbursable = isReimbursable
+        self.reimbursableDebtor = reimbursableDebtor
+        self.reimbursableAmount = reimbursableAmount
+        self.reimbursementExpectedDate = reimbursementExpectedDate
+        self.reimbursementReceivedAmount = reimbursementReceivedAmount
+        self.isReimbursementSettled = isReimbursementSettled
+        self.linkedReimbursementTransactionId = linkedReimbursementTransactionId
+        self.currencyCode = currencyCode
+        self.exchangeRateToBRL = exchangeRateToBRL
         self.createdAt = createdAt
     }
 
@@ -284,6 +318,9 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         case linkedQuotaUnits, linkedQuotaYearMonthKey, transactionOrigin, linkedEntityID
         case baseInstallmentRegisteredAmount, projectedInstallmentCorrectionAmount, confirmedRealInterestCorrectionAmount
         case creditCardId, creditCardInvoiceYearMonthKey, creditCardInvoiceId
+        case needsReview, sourceApp, isReimbursable, reimbursableDebtor, reimbursableAmount
+        case reimbursementExpectedDate, reimbursementReceivedAmount, isReimbursementSettled
+        case linkedReimbursementTransactionId, currencyCode, exchangeRateToBRL
         case createdAt
     }
 
@@ -357,6 +394,28 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
             ?? (try? c.decodeIfPresent(Int.self, forKey: AnyKey("credit_card_invoice_year_month_key")))
         self.creditCardInvoiceId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("creditCardInvoiceId")))
             ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("credit_card_invoice_id")))
+        self.needsReview = (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("needsReview")))
+            ?? (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("needs_review")))
+        self.sourceApp = (try? c.decodeIfPresent(String.self, forKey: AnyKey("sourceApp")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("source_app")))
+        self.isReimbursable = (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("isReimbursable")))
+            ?? (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("is_reimbursable")))
+        self.reimbursableDebtor = (try? c.decodeIfPresent(String.self, forKey: AnyKey("reimbursableDebtor")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("reimbursable_debtor")))
+        self.reimbursableAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("reimbursableAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("reimbursable_amount")))
+        self.reimbursementExpectedDate = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("reimbursementExpectedDate")))
+            ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("reimbursement_expected_date")))
+        self.reimbursementReceivedAmount = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("reimbursementReceivedAmount")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("reimbursement_received_amount")))
+        self.isReimbursementSettled = (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("isReimbursementSettled")))
+            ?? (try? c.decodeIfPresent(Bool.self, forKey: AnyKey("is_reimbursement_settled")))
+        self.linkedReimbursementTransactionId = (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linkedReimbursementTransactionId")))
+            ?? (try? c.decodeIfPresent(UUID.self, forKey: AnyKey("linked_reimbursement_transaction_id")))
+        self.currencyCode = (try? c.decodeIfPresent(String.self, forKey: AnyKey("currencyCode")))
+            ?? (try? c.decodeIfPresent(String.self, forKey: AnyKey("currency_code")))
+        self.exchangeRateToBRL = (try? c.decodeIfPresent(Double.self, forKey: AnyKey("exchangeRateToBRL")))
+            ?? (try? c.decodeIfPresent(Double.self, forKey: AnyKey("exchange_rate_to_brl")))
         self.createdAt = (try? c.decodeIfPresent(Date.self, forKey: AnyKey("createdAt")))
             ?? (try? c.decodeIfPresent(Date.self, forKey: AnyKey("created_at"))) ?? Date()
     }
@@ -427,6 +486,17 @@ public struct FinancialTransaction: Identifiable, Codable, Hashable {
         try c.encodeIfPresent(creditCardId, forKey: .creditCardId)
         try c.encodeIfPresent(creditCardInvoiceYearMonthKey, forKey: .creditCardInvoiceYearMonthKey)
         try c.encodeIfPresent(creditCardInvoiceId, forKey: .creditCardInvoiceId)
+        try c.encodeIfPresent(needsReview, forKey: .needsReview)
+        try c.encodeIfPresent(sourceApp, forKey: .sourceApp)
+        try c.encodeIfPresent(isReimbursable, forKey: .isReimbursable)
+        try c.encodeIfPresent(reimbursableDebtor, forKey: .reimbursableDebtor)
+        try c.encodeIfPresent(reimbursableAmount, forKey: .reimbursableAmount)
+        try c.encodeIfPresent(reimbursementExpectedDate, forKey: .reimbursementExpectedDate)
+        try c.encodeIfPresent(reimbursementReceivedAmount, forKey: .reimbursementReceivedAmount)
+        try c.encodeIfPresent(isReimbursementSettled, forKey: .isReimbursementSettled)
+        try c.encodeIfPresent(linkedReimbursementTransactionId, forKey: .linkedReimbursementTransactionId)
+        try c.encodeIfPresent(currencyCode, forKey: .currencyCode)
+        try c.encodeIfPresent(exchangeRateToBRL, forKey: .exchangeRateToBRL)
         try c.encode(createdAt, forKey: .createdAt)
     }
 }
